@@ -22,6 +22,7 @@ from .config import (
     clear_daemon_pid,
     detect_account,
     ensure_attachment_dir,
+    is_service_installed,
     read_daemon_pid,
     save_daemon_pid,
 )
@@ -145,7 +146,10 @@ class SignalClient:
 
     async def ensure_daemon(self) -> None:
         """Start signal-cli daemon if not already running (single-flight)."""
-        if RECEIVE_LOCK_FILE.exists():
+        # A background watcher owns message ingestion and may deliberately use
+        # another source (for example Signal Desktop) or an externally managed
+        # signal-cli daemon.  Never start a competing daemon in that case.
+        if is_service_installed() or RECEIVE_LOCK_FILE.exists():
             return
         # TTL fast path: skip HTTP ping if daemon was healthy recently
         if time.monotonic() - _daemon_last_ok_at < _DAEMON_OK_TTL:

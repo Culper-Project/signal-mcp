@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import plistlib
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -704,39 +706,38 @@ def _find_binary() -> str:
     return f"uv run --directory {Path(__file__).parent.parent.parent} signal-mcp"
 
 
+def _find_binary_args() -> list[str]:
+    """Return an argv-safe command for background-service definitions."""
+    import shutil
+    binary = shutil.which("signal-mcp")
+    if binary:
+        return [binary]
+    uv = shutil.which("uv") or "uv"
+    return [uv, "run", "--directory", str(Path(__file__).parent.parent.parent), "signal-mcp"]
+
+
 @cli.command("install-service")
 def install_service():
     """Install a background service to auto-receive Signal messages (macOS LaunchAgent or Linux systemd)."""
     import platform
-    binary = _find_binary()
+    binary_args = _find_binary_args()
     log_dir = Path.home() / ".local" / "share" / "signal-mcp"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     if platform.system() == "Darwin":
-        plist = f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{PLIST_LABEL}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{binary}</string>
-        <string>receive</string>
-        <string>--watch</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>{log_dir}/watch.log</string>
-    <key>StandardErrorPath</key>
-    <string>{log_dir}/watch.err</string>
-</dict>
-</plist>"""
+        plist = plistlib.dumps({
+            "Label": PLIST_LABEL,
+            "ProgramArguments": [*binary_args, "receive", "--watch"],
+            "EnvironmentVariables": {
+                "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            },
+            "RunAtLoad": True,
+            "KeepAlive": True,
+            "StandardOutPath": str(log_dir / "watch.log"),
+            "StandardErrorPath": str(log_dir / "watch.err"),
+        })
         PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-        PLIST_PATH.write_text(plist)
+        PLIST_PATH.write_bytes(plist)
         result = subprocess.run(
             ["launchctl", "load", "-w", str(PLIST_PATH)],
             capture_output=True, text=True,
@@ -755,7 +756,7 @@ Description=signal-mcp message watcher
 After=network.target
 
 [Service]
-ExecStart={binary} receive --watch
+ExecStart={shlex.join([*binary_args, "receive", "--watch"])}
 Restart=always
 RestartSec=5
 StandardOutput=append:{log_dir}/watch.log

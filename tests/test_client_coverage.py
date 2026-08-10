@@ -43,9 +43,24 @@ def reset_caches(monkeypatch):
     monkeypatch.setattr(client_mod, "_group_cache_at", 0.0)
 
 
+@pytest.fixture(autouse=True)
+def isolate_receive_lock(monkeypatch, tmp_path):
+    """Keep the real background watcher from short-circuiting daemon tests."""
+    monkeypatch.setattr(client_mod, "RECEIVE_LOCK_FILE", tmp_path / "receive.lock")
+    monkeypatch.setattr(client_mod, "is_service_installed", lambda: False)
+
+
 @pytest.fixture
 def client():
     return SignalClient(account="+10000000000")
+
+
+@pytest.mark.asyncio
+async def test_ensure_daemon_returns_when_service_installed(client, monkeypatch):
+    monkeypatch.setattr(client_mod, "is_service_installed", lambda: True)
+    with patch.object(client, "_daemon_alive", new_callable=AsyncMock) as alive:
+        await client.ensure_daemon()
+    alive.assert_not_awaited()
 
 
 # ── account property lazy init ────────────────────────────────────────────────

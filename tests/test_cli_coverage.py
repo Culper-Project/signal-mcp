@@ -1,5 +1,6 @@
 """Coverage tests for signal_mcp/cli.py — uncovered lines."""
 
+import plistlib
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -416,6 +417,14 @@ def test_find_binary_not_found():
     assert "signal-mcp" in result
 
 
+def test_find_binary_args_not_found():
+    import signal_mcp.cli as cli_mod
+    with patch("shutil.which", side_effect=lambda name: "/opt/homebrew/bin/uv" if name == "uv" else None):
+        result = cli_mod._find_binary_args()
+    assert result[:4] == ["/opt/homebrew/bin/uv", "run", "--directory", str(Path(cli_mod.__file__).parent.parent.parent)]
+    assert result[-1] == "signal-mcp"
+
+
 # ── install-service (Darwin) ──────────────────────────────────────────────────
 
 def test_install_service_darwin_success(runner, tmp_path, monkeypatch):
@@ -428,12 +437,19 @@ def test_install_service_darwin_success(runner, tmp_path, monkeypatch):
     mock_result.stderr = ""
 
     with patch("platform.system", return_value="Darwin"), \
-         patch("signal_mcp.cli._find_binary", return_value="/usr/bin/signal-mcp"), \
+         patch("signal_mcp.cli._find_binary_args", return_value=["/opt/homebrew/bin/uv", "run", "--directory", "/tmp/signal mcp", "signal-mcp"]), \
          patch("subprocess.run", return_value=mock_result):
         result = runner.invoke(cli, ["install-service"])
 
     assert result.exit_code == 0
     assert "installed" in result.output.lower()
+    with plist_path.open("rb") as handle:
+        plist = plistlib.load(handle)
+    assert plist["ProgramArguments"] == [
+        "/opt/homebrew/bin/uv", "run", "--directory", "/tmp/signal mcp",
+        "signal-mcp", "receive", "--watch",
+    ]
+    assert plist["EnvironmentVariables"]["PATH"].startswith("/opt/homebrew/bin:")
 
 
 def test_install_service_darwin_launchctl_warn(runner, tmp_path, monkeypatch):
@@ -446,7 +462,7 @@ def test_install_service_darwin_launchctl_warn(runner, tmp_path, monkeypatch):
     mock_result.stderr = "load failed"
 
     with patch("platform.system", return_value="Darwin"), \
-         patch("signal_mcp.cli._find_binary", return_value="/usr/bin/signal-mcp"), \
+         patch("signal_mcp.cli._find_binary_args", return_value=["/usr/bin/signal-mcp"]), \
          patch("subprocess.run", return_value=mock_result):
         result = runner.invoke(cli, ["install-service"])
 
@@ -471,7 +487,7 @@ def test_install_service_linux_systemctl_warn(runner, tmp_path, monkeypatch):
         return enable_fail
 
     with patch("platform.system", return_value="Linux"), \
-         patch("signal_mcp.cli._find_binary", return_value="/usr/bin/signal-mcp"), \
+         patch("signal_mcp.cli._find_binary_args", return_value=["/usr/bin/signal-mcp"]), \
          patch("subprocess.run", side_effect=mock_run):
         result = runner.invoke(cli, ["install-service"])
 
@@ -488,7 +504,7 @@ def test_install_service_linux_success(runner, tmp_path, monkeypatch):
     mock_result.stderr = ""
 
     with patch("platform.system", return_value="Linux"), \
-         patch("signal_mcp.cli._find_binary", return_value="/usr/bin/signal-mcp"), \
+         patch("signal_mcp.cli._find_binary_args", return_value=["/usr/bin/signal-mcp"]), \
          patch("subprocess.run", return_value=mock_result):
         result = runner.invoke(cli, ["install-service"])
 
@@ -498,7 +514,7 @@ def test_install_service_linux_success(runner, tmp_path, monkeypatch):
 
 def test_install_service_unsupported_platform(runner):
     with patch("platform.system", return_value="Windows"), \
-         patch("signal_mcp.cli._find_binary", return_value="/bin/signal-mcp"):
+         patch("signal_mcp.cli._find_binary_args", return_value=["/bin/signal-mcp"]):
         result = runner.invoke(cli, ["install-service"])
     assert result.exit_code == 1
 
