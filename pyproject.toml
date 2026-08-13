@@ -16,7 +16,7 @@ dependencies = [
     "httpx>=0.28.1",
     # server.py uses the 1.x lowlevel decorator API (@app.list_tools / @app.call_tool),
     # which mcp 2.0 removed in favour of Server(on_list_tools=..., on_call_tool=...).
-    "mcp>=1.27.0,<2",
+    "mcp>=2.0",
 ]
 
 [project.scripts]

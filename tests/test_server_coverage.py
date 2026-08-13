@@ -11,7 +11,7 @@ import signal_mcp.store as _store_mod
 import signal_mcp.server as server_mod
 from signal_mcp.config import DAEMON_URL
 from signal_mcp.client import SignalClient, SignalError
-from signal_mcp.server import call_tool, get_client, TOOLS
+from tests.conftest import call_tool, get_client, TOOLS
 from mcp.types import Tool
 
 
@@ -59,10 +59,11 @@ def test_tools_is_non_empty_list_of_tool_instances():
 @pytest.mark.asyncio
 async def test_list_tools_handler_returns_tools():
     """list_tools() registered handler returns the TOOLS list."""
-    from signal_mcp.server import list_tools
-    result = await list_tools()
-    assert result is TOOLS
-    assert len(result) > 0
+    from signal_mcp.server import _list_tools as list_tools
+    from mcp.types import RequestParams
+    result = await list_tools(RequestParams())
+    assert result.tools == TOOLS
+    assert len(result.tools) > 0
 
 
 # ── receive_messages handler re-raise when not background service ─────────────

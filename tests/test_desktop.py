@@ -967,7 +967,8 @@ async def test_server_sync_desktop_tool(tmp_path):
     fake_client.account = "+49test"
     with patch("signal_mcp.desktop.sync_from_desktop", return_value=fake_result), \
          patch.object(server_mod, "_client", fake_client):
-        result = await server_mod.call_tool("sync_desktop", {})
+        from tests.conftest import call_tool as _ct
+        result = await _ct("sync_desktop", {})
 
     assert result[0].text
     import json as _json
@@ -986,7 +987,8 @@ async def test_server_sync_desktop_error(tmp_path):
     fake_client.account = "+49test"
     with patch("signal_mcp.desktop.sync_from_desktop", side_effect=DesktopImportError("no sqlcipher")), \
          patch.object(server_mod, "_client", fake_client):
-        result = await server_mod.call_tool("sync_desktop", {})
+        from tests.conftest import call_tool as _ct
+        result = await _ct("sync_desktop", {})
 
     assert "no sqlcipher" in result[0].text
 
