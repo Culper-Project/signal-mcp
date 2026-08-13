@@ -173,6 +173,21 @@ TOOLS = [
         },
     ),
     Tool(
+        name="receive_direct",
+        description=(
+            "Receive messages by calling signal-cli directly, bypassing the daemon. "
+            "Use this as a fallback when the daemon is stuck or unresponsive — it stops the daemon, "
+            "calls signal-cli receive directly, then lets the daemon restart. "
+            "Prefer receive_messages (daemon mode) for normal use; use this only for troubleshooting."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "timeout": {"type": "integer", "description": "Seconds to wait for messages (default: 5)", "default": 5},
+            },
+        },
+    ),
+    Tool(
         name="list_contacts",
         description=(
             "List all Signal contacts known to this account, including names and phone numbers. "
@@ -1586,6 +1601,15 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
                         "messages": [client._enrich_message(m) for m in msgs],
                     })
                 raise
+
+        elif name == "receive_direct":
+            await client._ensure_caches()
+            try:
+                timeout = int(arguments.get("timeout", 5))
+            except (TypeError, ValueError):
+                return _err("timeout must be an integer number of seconds")
+            messages = await client.receive_direct(timeout=timeout)
+            return _ok([client._enrich_message(m) for m in messages])
 
         elif name == "list_contacts":
             contacts = await client.list_contacts(search=arguments.get("search"))
