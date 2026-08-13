@@ -11,7 +11,7 @@ import httpx
 import signal_mcp.store as _store_mod
 from signal_mcp.config import DAEMON_URL
 from signal_mcp.models import Message
-from signal_mcp.server import call_tool
+from tests.conftest import call_tool
 from signal_mcp.client import SignalClient
 
 

@@ -6,7 +6,14 @@ from datetime import datetime
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    RequestParams,
+    TextContent,
+    Tool,
+)
 
 from .client import SignalClient, SignalError
 from .config import check_signal_cli_version, is_service_installed
@@ -39,12 +46,12 @@ def get_client() -> SignalClient:
     return _client
 
 
-def _ok(data) -> list[TextContent]:
-    return [TextContent(type="text", text=json.dumps(data, indent=2, default=str))]
+def _ok(data) -> CallToolResult:
+    return CallToolResult(content=[TextContent(type="text", text=json.dumps(data, indent=2, default=str))])
 
 
-def _err(msg: str) -> list[TextContent]:
-    return [TextContent(type="text", text=f"Error: {msg}")]
+def _err(msg: str) -> CallToolResult:
+    return CallToolResult(content=[TextContent(type="text", text=f"Error: {msg}")], is_error=True)
 
 
 def _require(arguments: dict, *keys: str) -> str | None:
@@ -1442,14 +1449,14 @@ TOOLS += [
 ]
 
 
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    return TOOLS
+async def _list_tools(params: RequestParams) -> ListToolsResult:
+    return ListToolsResult(tools=TOOLS)
 
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    client = get_client()
+async def call_tool(params: CallToolRequestParams) -> CallToolResult:
+    name = params.name
+    arguments = params.arguments or {}
+    client = get_client()  # noqa: F841 — used throughout the giant match below
 
     try:
         if name not in _DAEMON_FREE:
@@ -2130,6 +2137,10 @@ async def _freshen_store(client: SignalClient) -> str | None:
     except Exception:
         pass  # service just started receiving, or daemon not ready — best effort
     return _SERVICE_WARNING
+
+
+app.add_request_handler("tools/list", RequestParams, _list_tools)
+app.add_request_handler("tools/call", CallToolRequestParams, call_tool)
 
 
 async def serve() -> None:  # pragma: no cover
