@@ -30,8 +30,6 @@ _DAEMON_FREE = {
     "list_attachments", "get_attachment",
     "clear_local_store", "delete_local_messages", "export_messages",
     "prune_store", "mark_as_unread",
-    "list_scheduled_messages", "cancel_scheduled_message", "schedule_message",
-    "set_webhook", "get_webhook",
 }
 # Tools NOT in _DAEMON_FREE call ensure_daemon() automatically before executing.
 # get_unread calls _freshen_store() (which may call receive_messages) if no
@@ -65,99 +63,6 @@ def _require(arguments: dict, *keys: str) -> str | None:
 # ── Tool definitions ───────────────────────────────────────────────────────────
 
 TOOLS = [
-    Tool(
-        name="send_message",
-        description=(
-            "Send a text message to a Signal contact. The message is delivered end-to-end encrypted. "
-            "Returns the sent timestamp, which can be used as target_timestamp for react_to_message or edit_message. "
-            "To reply/quote a specific message, provide quote_author and quote_timestamp (get timestamps from get_conversation). "
-            "Use send_group_message for group chats, send_attachment for files/images."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number in E.164 format (e.g. +1234567890)"},
-                "message": {"type": "string", "description": "Message text to send"},
-                "quote_author": {"type": "string", "description": "Phone number of the author of the message being quoted/replied to"},
-                "quote_timestamp": {"type": "integer", "description": "Timestamp of the message being quoted/replied to (from get_conversation)"},
-            },
-            "required": ["recipient", "message"],
-        },
-    ),
-    Tool(
-        name="send_group_message",
-        description=(
-            "Send a text message to a Signal group. The message is delivered end-to-end encrypted to all group members. "
-            "Returns the sent timestamp, which can be used as target_timestamp for react_to_message or edit_message. "
-            "To @mention a member, include their name in the message text and pass a mentions list where each entry has "
-            "start (character index of the mention in the text), length (character count), and author (E.164 phone number). "
-            "To reply/quote a message, provide quote_author (sender's phone number) and quote_timestamp (from get_conversation). "
-            "Use list_groups to get group_id values. "
-            "Use send_group_attachment to send files or images to a group. "
-            "Do NOT use for direct messages to a contact — use send_message instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID (from list_groups)"},
-                "message": {"type": "string", "description": "Message text to send"},
-                "mentions": {
-                    "type": "array",
-                    "description": "List of @mentions. Each item: {start: character offset of the mention in the message, length: character count of the mention, author: E.164 phone number of the mentioned member}. Example: message='Hello @Alice', mentions=[{start:6,length:6,author:'+1234567890'}]",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "start": {"type": "integer", "description": "Character offset of the mention in the message text"},
-                            "length": {"type": "integer", "description": "Length of the mention text in characters"},
-                            "author": {"type": "string", "description": "E.164 phone number of the mentioned group member"},
-                        },
-                    },
-                },
-                "quote_author": {"type": "string", "description": "Phone number (E.164) of the author of the message being quoted"},
-                "quote_timestamp": {"type": "integer", "description": "Timestamp of the quoted message (from get_conversation)"},
-            },
-            "required": ["group_id", "message"],
-        },
-    ),
-    Tool(
-        name="send_note_to_self",
-        description=(
-            "Send a note to yourself via Signal's 'Note to Self' / saved messages feature. "
-            "The note is synced across all your linked Signal devices. "
-            "Useful for saving reminders, bookmarks, or drafts that sync to your phone."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "message": {"type": "string", "description": "Note text to save"},
-            },
-            "required": ["message"],
-        },
-    ),
-    Tool(
-        name="edit_message",
-        description=(
-            "Edit the text of a previously sent message. "
-            "Sends the edit via signal-cli to all original recipients; they see the updated text inline with an '(edited)' label. "
-            "Only the message text can be modified — attachments, quoted replies, and reactions are immutable. "
-            "The edit must reference the exact timestamp of the original message as returned by send_message or get_conversation. "
-            "Edits can only be made to messages you sent; editing someone else's message returns an error. "
-            "There is no enforced time limit, but Signal clients may ignore edits on very old messages. "
-            "Provide recipient for a DM edit or group_id for a group edit; exactly one is required. "
-            "Use when correcting a typo or updating information in a message you already sent. "
-            "Do NOT use to change who a message was sent to — send a new message instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to edit (from get_conversation or send_message response)"},
-                "message": {"type": "string", "description": "New message text to replace the original"},
-                "recipient": {"type": "string", "description": "Phone number for a DM message edit"},
-                "group_id": {"type": "string", "description": "Group ID for a group message edit"},
-            },
-            "required": ["target_timestamp", "message"],
-        },
-    ),
     Tool(
         name="receive_messages",
         description=(
@@ -233,101 +138,6 @@ TOOLS = [
         },
     ),
     Tool(
-        name="send_attachment",
-        description=(
-            "Send one or more files or images to a Signal contact. "
-            "Supports photos, videos, documents, and audio files. "
-            "Use path for a single file or paths to send multiple files in one message. "
-            "Set view_once=true to send media that auto-deletes after the recipient views it once. "
-            "For groups use send_group_attachment instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number in E.164 format"},
-                "path": {"type": "string", "description": "Single file path (absolute, relative, or ~/path)"},
-                "paths": {"type": "array", "items": {"type": "string"}, "description": "Multiple file paths to send as one message"},
-                "caption": {"type": "string", "description": "Optional caption text shown below the attachment", "default": ""},
-                "view_once": {"type": "boolean", "description": "Send as view-once media — recipient can only view it once before it disappears", "default": False},
-            },
-            "required": ["recipient"],
-        },
-    ),
-    Tool(
-        name="send_group_attachment",
-        description=(
-            "Send one or more files (photos, videos, documents, audio) to a Signal group in a single message. "
-            "All current group members receive the attachment via the normal Signal encrypted delivery pipeline. "
-            "Provide path for a single file or paths for multiple files sent together in one message. "
-            "Set view_once=true so each member can only open the media once before it disappears — "
-            "ideal for sensitive images; does not apply to document types. "
-            "The file must exist and be readable on the local filesystem; non-existent paths return an error. "
-            "Use list_groups to obtain the group_id. "
-            "Use when sharing a file with a group chat. "
-            "Do NOT use for direct messages — use send_attachment instead. "
-            "Do NOT use when you only want to send text — use send_group_message instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID (get from list_groups)"},
-                "path": {"type": "string", "description": "Single file path (absolute, relative, or ~/path)"},
-                "paths": {"type": "array", "items": {"type": "string"}, "description": "Multiple file paths to send as one message"},
-                "caption": {"type": "string", "description": "Optional caption text shown below the attachment", "default": ""},
-                "view_once": {"type": "boolean", "description": "Send as view-once media — each recipient can only view it once", "default": False},
-            },
-            "required": ["group_id"],
-        },
-    ),
-    Tool(
-        name="react_to_message",
-        description=(
-            "Add or remove an emoji reaction on a Signal message in a direct or group conversation. "
-            "target_author is the phone number of the person who sent the original message. "
-            "target_timestamp is the sent_at timestamp of that message (from get_conversation). "
-            "Supply recipient for a DM conversation or group_id for a group conversation — exactly one is required. "
-            "Each account can have at most one reaction per message; calling again with a different emoji replaces the previous one. "
-            "Set remove=true to retract an existing reaction without adding a new one (emoji is still required as the key). "
-            "Use when you want to react to or acknowledge a specific message without sending a reply. "
-            "Do NOT use to send a text reply — use send_message or send_group_message for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_author": {"type": "string", "description": "Phone number of the message author"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to react to"},
-                "emoji": {"type": "string", "description": "Emoji to react with (e.g. '👍')"},
-                "recipient": {"type": "string", "description": "Phone number for DM reactions"},
-                "group_id": {"type": "string", "description": "Group ID for group reactions"},
-                "remove": {"type": "boolean", "description": "Remove an existing reaction (default false)", "default": False},
-            },
-            "required": ["target_author", "target_timestamp", "emoji"],
-        },
-    ),
-    Tool(
-        name="set_typing",
-        description=(
-            "Send a 'typing…' indicator to a Signal contact to show you are composing a message. "
-            "The indicator appears immediately in the recipient's conversation and auto-expires after ~15 seconds "
-            "if no message is sent — you do not need to call stop=true after sending the message. "
-            "Call with stop=true to cancel an in-progress typing indicator early (e.g. if the user abandons the message). "
-            "signal-cli relays the indicator via the Signal protocol; if the recipient has typing indicators "
-            "disabled in their settings, it is silently ignored on their end — no error is returned. "
-            "Typing indicators are only supported for one-to-one DMs; passing a group_id is not valid. "
-            "Use before send_message to create a realistic 'typing' effect in an automated workflow. "
-            "Do NOT use for groups — group typing indicators are not supported by Signal. "
-            "Do NOT call repeatedly in a tight loop; one call per composing session is sufficient."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number in E.164 format"},
-                "stop": {"type": "boolean", "description": "Set to true to cancel an active typing indicator (default: false = start typing)", "default": False},
-            },
-            "required": ["recipient"],
-        },
-    ),
-    Tool(
         name="get_profile",
         description=(
             "Fetch the Signal profile for a contact, including their display name, about text, and avatar. "
@@ -344,118 +154,6 @@ TOOLS = [
         },
     ),
     Tool(
-        name="block_contact",
-        description=(
-            "Block a Signal contact so they can no longer send you messages or call you. "
-            "The block is applied locally via signal-cli and propagated to the Signal network. "
-            "The blocked contact receives NO notification — from their perspective, messages appear sent "
-            "but are silently discarded before reaching you; delivery receipts are suppressed. "
-            "Blocking does not delete existing message history; prior conversations remain in your local store. "
-            "The block persists across restarts and is reversible — call unblock_contact to lift it. "
-            "Use when you want to permanently stop receiving messages from a contact. "
-            "Use unblock_contact to reverse the block. "
-            "Do NOT use as a temporary mute — blocking hides the contact from normal message flow entirely. "
-            "Do NOT use to remove a contact from your list — use remove_contact for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number": {"type": "string", "description": "Phone number to block (E.164 format, e.g. +1234567890)"},
-            },
-            "required": ["number"],
-        },
-    ),
-    Tool(
-        name="unblock_contact",
-        description=(
-            "Unblock a previously blocked Signal contact, restoring their ability to send you messages and calls. "
-            "The contact is NOT notified that they were unblocked. "
-            "Use block_contact to re-block, or list_contacts to see which contacts are blocked."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number": {"type": "string", "description": "Phone number to unblock (E.164 format)"},
-            },
-            "required": ["number"],
-        },
-    ),
-    Tool(
-        name="remove_contact",
-        description=(
-            "Remove a contact from the local signal-cli contact list on this device. "
-            "This only removes the local record — it does NOT block the contact, delete message history, "
-            "or affect the contact's ability to message you. "
-            "To prevent incoming messages, use block_contact instead. "
-            "Use update_contact to set a local display name without removing."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number": {"type": "string", "description": "Phone number to remove (E.164 format)"},
-            },
-            "required": ["number"],
-        },
-    ),
-    Tool(
-        name="update_profile",
-        description=(
-            "Update your own Signal profile visible to all contacts. "
-            "name sets your display name shown to contacts who have not saved your number. "
-            "about sets the bio text shown on your profile page. "
-            "avatar_path sets a new profile photo from a local image file (JPEG or PNG). "
-            "Set remove_avatar=true to clear your current photo without setting a new one. "
-            "All parameters are optional — only include what you want to change. "
-            "Changes are propagated to the Signal network immediately. "
-            "Use get_profile to read a contact's current profile. "
-            "Do NOT use to rename a linked device — use update_device for that. "
-            "Do NOT use to change messaging settings — use update_configuration for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Display name to set"},
-                "about": {"type": "string", "description": "About/bio text"},
-                "avatar_path": {"type": "string", "description": "Path to avatar image file"},
-                "remove_avatar": {"type": "boolean", "description": "Remove current avatar", "default": False},
-            },
-        },
-    ),
-    Tool(
-        name="create_group",
-        description=(
-            "Create a new Signal group with specified members. "
-            "You are automatically added as the group admin. All listed members receive an invitation notification. "
-            "Returns the new group's ID and invite link. "
-            "Use update_group to modify the group after creation (name, description, members, link settings). "
-            "Use send_group_message to post messages to the group."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Group name visible to all members"},
-                "members": {"type": "array", "items": {"type": "string"}, "description": "Phone numbers (E.164) of initial members to invite"},
-                "description": {"type": "string", "description": "Optional group description shown in group info"},
-            },
-            "required": ["name", "members"],
-        },
-    ),
-    Tool(
-        name="join_group",
-        description=(
-            "Join a Signal group using an invite link (https://signal.group/#...). "
-            "If the group requires admin approval, your join request will be pending until approved. "
-            "After joining, use list_groups to find the group_id for sending messages."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "uri": {"type": "string", "description": "Group invite link starting with https://signal.group/#"},
-            },
-            "required": ["uri"],
-        },
-    ),
-    Tool(
         name="list_devices",
         description=(
             "List all devices currently linked to your Signal account, including the primary device and any linked secondaries. "
@@ -466,44 +164,6 @@ TOOLS = [
             "or to find the ID of a device you want to rename or remove."
         ),
         inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
-        name="add_device",
-        description=(
-            "Link a new secondary device to your Signal account using a device-link URI. "
-            "The URI is generated on the new device by running 'signal-cli link' or by scanning the QR code "
-            "in Signal Desktop's Settings → Linked Devices → Link New Device. "
-            "After linking, the new device receives future messages but not historical ones. "
-            "Use list_devices to confirm the device was linked successfully. "
-            "Use remove_device to unlink a device you no longer use. "
-            "Do NOT share the device-link URI — it grants full Signal account access to whoever uses it."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "uri": {"type": "string", "description": "Device link URI (from signal-cli link output)"},
-            },
-            "required": ["uri"],
-        },
-    ),
-    Tool(
-        name="remove_device",
-        description=(
-            "Permanently unlink a secondary device from your Signal account. "
-            "The device loses access to send and receive messages immediately. "
-            "device_id must be a secondary device (ID ≥ 2) — you cannot unlink your primary device. "
-            "The removed device is not notified; it simply stops receiving messages. "
-            "This action is irreversible — the device must re-link via add_device to regain access. "
-            "Use list_devices to find the device_id you want to remove. "
-            "Use update_device to rename a device without removing it."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "device_id": {"type": "integer", "description": "Device ID (get from list_devices)"},
-            },
-            "required": ["device_id"],
-        },
     ),
     Tool(
         name="get_own_number",
@@ -590,237 +250,6 @@ TOOLS = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
-        name="delete_message",
-        description=(
-            "Remote-delete (unsend) a message you previously sent to a Signal contact. "
-            "Delivers a delete request to the recipient's device; the message disappears from their "
-            "conversation view on Signal 5.0+ clients. "
-            "You can only delete messages you sent — you cannot delete messages received from others. "
-            "target_timestamp is the sent_at timestamp of the message (from get_conversation). "
-            "Deletion may fail silently if the recipient is on an older Signal client. "
-            "Remote deletion does not remove the message from the local signal-mcp store — "
-            "use delete_local_messages to remove it locally. "
-            "Use when you want to retract a sent message from the recipient's device. "
-            "Do NOT use for group messages — use delete_group_message instead. "
-            "Do NOT use to delete a message you received — only senders can remotely delete."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number of the recipient"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to delete"},
-            },
-            "required": ["recipient", "target_timestamp"],
-        },
-    ),
-    Tool(
-        name="delete_group_message",
-        description=(
-            "Remote-delete (unsend) a message you previously sent to a Signal group. "
-            "Delivers a delete request to all group members' devices; the message disappears from "
-            "their conversation view on Signal 5.0+ clients. "
-            "You can only delete messages you sent — for admin deletion of any member's message use admin_delete_message. "
-            "target_timestamp is the sent_at timestamp of the message (from get_conversation). "
-            "Deletion may fail silently on older Signal clients. "
-            "Remote deletion does not remove the message from the local signal-mcp store. "
-            "Use when you want to retract a message you sent in a group. "
-            "Do NOT use for direct messages — use delete_message instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to delete"},
-            },
-            "required": ["group_id", "target_timestamp"],
-        },
-    ),
-    Tool(
-        name="send_read_receipt",
-        description=(
-            "Send a read receipt to a contact, notifying them that you have read their messages. "
-            "The sender sees a 'Read' indicator under their messages in their Signal app. "
-            "Pass all timestamps you want to mark as read in a single call to batch the receipts. "
-            "Timestamps come from the received_at or sent_at fields in get_conversation. "
-            "Note: read receipts are only delivered if the sender has read receipts enabled in their Signal settings. "
-            "Use after reading a conversation with get_conversation to acknowledge the messages. "
-            "Do NOT use to mark messages as read in the local store — get_conversation does that automatically. "
-            "Do NOT use for group messages — Signal does not support per-sender read receipts in groups."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "sender": {"type": "string", "description": "Phone number (E.164) of the contact whose messages you are acknowledging"},
-                "timestamps": {"type": "array", "items": {"type": "integer"}, "description": "Timestamps of the messages to mark as read (from get_conversation sent_at/received_at fields)"},
-            },
-            "required": ["sender", "timestamps"],
-        },
-    ),
-    Tool(
-        name="update_contact",
-        description=(
-            "Set or update the local display name for a Signal contact. "
-            "The name is stored only in signal-cli's local contact database — it is never sent to or visible by the contact. "
-            "Overrides the contact's own profile name in list_contacts and conversation displays. "
-            "Useful for adding a human-readable label to a number that has no Signal profile name. "
-            "Use list_contacts to see current names before updating. "
-            "Use when you want to assign or correct a contact's display name locally. "
-            "Do NOT use to change your own profile name — use update_profile for that. "
-            "Do NOT use to block or remove a contact — use block_contact or remove_contact for those."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number": {"type": "string", "description": "Phone number in E.164 format"},
-                "name": {"type": "string", "description": "Display name to set"},
-            },
-            "required": ["number", "name"],
-        },
-    ),
-    Tool(
-        name="update_group",
-        description=(
-            "Modify a Signal group's settings, membership, or permissions. "
-            "All parameters except group_id are optional — include only what you want to change. "
-            "add_members sends invitations; remove_members removes members immediately. "
-            "add_admins promotes members to admin; remove_admins demotes them. "
-            "expiration_seconds sets the disappearing-messages timer (0 to disable). "
-            "link_mode controls the invite link: 'enabled' (anyone with link can join), "
-            "'enabled-with-approval' (admin must approve), 'disabled' (no link), "
-            "or 'reset' (generate a new link and invalidate the old one). "
-            "Changes are applied instantly and all members receive an update notification. "
-            "You must be a group admin to change membership, admin list, or invite link. "
-            "Use list_groups to get the group_id and confirm your admin status. "
-            "Do NOT use to send a message — use send_group_message for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID to update"},
-                "name": {"type": "string", "description": "New group name"},
-                "description": {"type": "string", "description": "New group description"},
-                "add_members": {"type": "array", "items": {"type": "string"}, "description": "Phone numbers to add"},
-                "remove_members": {"type": "array", "items": {"type": "string"}, "description": "Phone numbers to remove"},
-                "add_admins": {"type": "array", "items": {"type": "string"}, "description": "Phone numbers to promote to admin"},
-                "remove_admins": {"type": "array", "items": {"type": "string"}, "description": "Phone numbers to demote from admin"},
-                "expiration_seconds": {"type": "integer", "description": "Disappearing message timer in seconds (0 to disable)"},
-                "link_mode": {"type": "string", "description": "Invite link mode: 'disabled', 'enabled', 'enabled-with-approval', or 'reset' to generate a new link"},
-            },
-            "required": ["group_id"],
-        },
-    ),
-    Tool(
-        name="leave_group",
-        description=(
-            "Leave a Signal group. After leaving, you will no longer receive messages from the group "
-            "and will be removed from the member list. Other members are notified that you left. "
-            "This action is irreversible without being re-invited. "
-            "Use list_groups to find the group_id."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID to leave (get from list_groups)"},
-            },
-            "required": ["group_id"],
-        },
-    ),
-    Tool(
-        name="pin_message",
-        description=(
-            "Pin a message in a DM or group conversation so it appears prominently in the conversation header. "
-            "Pinning delivers a system-level pin notification to all participants via signal-cli; "
-            "they see the pinned message highlighted at the top of the thread. "
-            "Any participant can pin any message — admin privileges are not required. "
-            "Only one message can be pinned per conversation at a time; pinning a new message "
-            "automatically replaces the previous pin. "
-            "Provide exactly one of recipient (for a DM) or group_id (for a group). "
-            "Get target_author and target_timestamp from get_conversation — both are required to identify the message. "
-            "Use unpin_message to remove a pinned message without replacing it. "
-            "Use when you want to highlight an important message for all participants. "
-            "Do NOT use if you only want to bookmark a message for yourself — pinning is visible to everyone."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_author": {"type": "string", "description": "Phone number of the message author (E.164)"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to pin (from get_conversation)"},
-                "recipient": {"type": "string", "description": "Phone number for DM conversations — provide this OR group_id"},
-                "group_id": {"type": "string", "description": "Group ID for group conversations — provide this OR recipient"},
-            },
-            "required": ["target_author", "target_timestamp"],
-        },
-    ),
-    Tool(
-        name="unpin_message",
-        description=(
-            "Unpin a previously pinned message in a DM or group conversation, removing it from the "
-            "conversation header. Provide either recipient (for DMs) or group_id (for groups). "
-            "Get target_author and target_timestamp from get_conversation. "
-            "Use pin_message to pin a message."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_author": {"type": "string", "description": "Phone number of the message author (E.164)"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the pinned message (from get_conversation)"},
-                "recipient": {"type": "string", "description": "Phone number for DM conversations — provide this OR group_id"},
-                "group_id": {"type": "string", "description": "Group ID for group conversations — provide this OR recipient"},
-            },
-            "required": ["target_author", "target_timestamp"],
-        },
-    ),
-    Tool(
-        name="admin_delete_message",
-        description=(
-            "As a group admin, delete any message posted in a group you administer, regardless of who sent it. "
-            "The message is removed for all participants immediately. "
-            "Only works if you are an admin of the specified group — use list_groups to confirm admin status. "
-            "For deleting your own messages use delete_message (DM) or delete_group_message (group) instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID where the message was sent (get from list_groups)"},
-                "target_author": {"type": "string", "description": "Phone number of the user who sent the message"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the message to delete (from get_conversation)"},
-            },
-            "required": ["group_id", "target_author", "target_timestamp"],
-        },
-    ),
-    Tool(
-        name="send_contacts_sync",
-        description=(
-            "Push your local contacts list to all linked Signal devices (e.g., phone, desktop). "
-            "Useful when contacts added via signal-cli are not showing up on other devices. "
-            "This is a one-way sync from this device outward."
-        ),
-        inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
-        name="update_device",
-        description=(
-            "Rename a linked secondary device on your Signal account. "
-            "The updated name is synced to the Signal network and appears immediately in your Signal app's "
-            "Settings → Linked Devices list across all your devices. "
-            "Only secondary (linked) devices can be renamed; the primary device name is set during registration. "
-            "Use list_devices to find all linked device IDs and their current names. "
-            "The device_id is a small integer (e.g. 2, 3); device 1 is always the primary. "
-            "Renaming does not affect the device's ability to send or receive messages. "
-            "Use when you want to distinguish between multiple linked devices by a meaningful label. "
-            "Use remove_device to unlink a device entirely. "
-            "Do NOT use to rename your own primary account — that is done via update_profile."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "device_id": {"type": "integer", "description": "Device ID (get from list_devices)"},
-                "name": {"type": "string", "description": "New display name for the device"},
-            },
-            "required": ["device_id", "name"],
-        },
-    ),
-    Tool(
         name="mark_as_unread",
         description=(
             "Mark one or more messages as unread in the local signal-mcp store. "
@@ -857,111 +286,6 @@ TOOLS = [
         },
     ),
     Tool(
-        name="send_message_request_response",
-        description="Accept or decline a message request from an unknown contact (required before replying to strangers)",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "sender": {"type": "string", "description": "Phone number of the contact who sent the message request"},
-                "accept": {"type": "boolean", "description": "true to accept and start chatting, false to decline/block"},
-            },
-            "required": ["sender", "accept"],
-        },
-    ),
-    Tool(
-        name="create_poll",
-        description=(
-            "Create a poll and send it to a Signal contact or group. "
-            "Provide at least 2 options. Set multi_select=true to allow voters to pick multiple answers. "
-            "Provide either recipient (DM) or group_id (group) — exactly one is required. "
-            "Returns the poll timestamp needed for vote_poll and terminate_poll. "
-            "Use terminate_poll to close the poll and stop accepting votes."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "question": {"type": "string", "description": "The poll question text"},
-                "options": {"type": "array", "items": {"type": "string"}, "description": "List of answer options (minimum 2 required)"},
-                "recipient": {"type": "string", "description": "Phone number for a DM poll — provide this OR group_id"},
-                "group_id": {"type": "string", "description": "Group ID for a group poll — provide this OR recipient"},
-                "multi_select": {"type": "boolean", "description": "Allow voters to select multiple options (default: false = single choice only)", "default": False},
-            },
-            "required": ["question", "options"],
-        },
-    ),
-    Tool(
-        name="vote_poll",
-        description=(
-            "Cast your vote on an active Signal poll in a DM or group conversation. "
-            "Your vote is delivered via signal-cli and is visible to all participants in real time. "
-            "Each participant can vote once; re-voting overwrites the previous selection. "
-            "For single-choice polls, provide exactly one option index in votes. "
-            "For multi-select polls, provide all chosen indices in a single call — partial updates are not supported. "
-            "votes are 0-based indices corresponding to the options array from the original create_poll call. "
-            "Get target_author, target_timestamp, and poll_id from the poll message returned by get_conversation. "
-            "Provide exactly one of recipient (for a DM poll) or group_id (for a group poll). "
-            "Voting on a terminated poll returns an error. "
-            "Use terminate_poll to close a poll you created and freeze the results. "
-            "Use when responding to an open poll in a conversation. "
-            "Do NOT use to create a poll — use create_poll instead."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_author": {"type": "string", "description": "Phone number of the poll creator (E.164)"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the poll message (from get_conversation)"},
-                "poll_id": {"type": "integer", "description": "Poll ID from the poll message data"},
-                "votes": {"type": "array", "items": {"type": "integer"}, "description": "Option indices to vote for (0-based). Single item for single-choice polls."},
-                "recipient": {"type": "string", "description": "Phone number for a DM poll — provide this OR group_id"},
-                "group_id": {"type": "string", "description": "Group ID for a group poll — provide this OR recipient"},
-            },
-            "required": ["target_author", "target_timestamp", "poll_id", "votes"],
-        },
-    ),
-    Tool(
-        name="terminate_poll",
-        description=(
-            "Close (terminate) a poll you created, stopping any further votes. "
-            "All participants are notified that the poll has ended and can see the final results. "
-            "Get target_timestamp and poll_id from the original poll message in get_conversation. "
-            "Only the poll creator can terminate their own poll. "
-            "Provide either recipient (DM poll) or group_id (group poll)."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "target_author": {"type": "string", "description": "Phone number of the poll creator — must be your own number"},
-                "target_timestamp": {"type": "integer", "description": "Timestamp of the poll message (from get_conversation)"},
-                "poll_id": {"type": "integer", "description": "Poll ID from the original poll message data"},
-                "recipient": {"type": "string", "description": "Phone number for a DM poll — provide this OR group_id"},
-                "group_id": {"type": "string", "description": "Group ID for a group poll — provide this OR recipient"},
-            },
-            "required": ["target_author", "target_timestamp", "poll_id"],
-        },
-    ),
-    Tool(
-        name="set_expiration_timer",
-        description=(
-            "Set or disable the disappearing-messages timer for a direct or group conversation. "
-            "Once set, all new messages auto-delete after expiration_seconds on both sides. "
-            "Common values: 3600 (1h), 86400 (1d), 604800 (1w), 2592000 (30d). "
-            "Set expiration_seconds=0 to disable disappearing messages entirely. "
-            "Provide recipient for a direct conversation or group_id for a group — exactly one is required. "
-            "The change is delivered to all participants and takes effect on new messages immediately; "
-            "existing messages already sent are not affected. "
-            "Use when you want automatic privacy for a sensitive conversation."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "expiration_seconds": {"type": "integer", "description": "Timer in seconds (0 to disable). Common: 3600=1h, 86400=1d, 604800=1w"},
-                "recipient": {"type": "string", "description": "Phone number for a direct conversation"},
-                "group_id": {"type": "string", "description": "Group ID for a group conversation"},
-            },
-            "required": ["expiration_seconds"],
-        },
-    ),
-    Tool(
         name="list_identities",
         description=(
             "List the Signal identity keys (safety numbers) and trust levels for one or all contacts. "
@@ -978,29 +302,6 @@ TOOLS = [
             "properties": {
                 "number": {"type": "string", "description": "Filter to a specific contact (optional)"},
             },
-        },
-    ),
-    Tool(
-        name="trust_identity",
-        description=(
-            "Trust a contact's Signal identity key after verifying their safety number out-of-band. "
-            "Signal uses identity keys (safety numbers) to verify end-to-end encryption. "
-            "When a contact's safety number changes (e.g. they reinstalled Signal), sending fails "
-            "until you explicitly trust the new key — this tool resolves that block. "
-            "Provide safety_number to trust only that specific verified key; leave it blank to trust "
-            "all known keys for the number (less secure but unblocks delivery immediately). "
-            "Use list_identities to inspect the current trust level and key fingerprint before calling. "
-            "Use when Signal blocks delivery with 'untrusted identity' or 'safety number changed' errors. "
-            "Do NOT trust without first verifying the safety number via a trusted channel (in-person, phone call). "
-            "Trusting an unverified key bypasses Signal's TOFU identity verification."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number": {"type": "string", "description": "Phone number to trust"},
-                "safety_number": {"type": "string", "description": "Verified safety number (leave blank to trust all known keys)"},
-            },
-            "required": ["number"],
         },
     ),
 ]
@@ -1056,30 +357,6 @@ TOOLS += [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
-        name="update_configuration",
-        description=(
-            "Update Signal account-wide messaging settings. "
-            "read_receipts controls whether Signal tells senders when you have read their messages. "
-            "typing_indicators controls whether contacts see the '...' indicator when you are composing. "
-            "link_previews controls whether URLs in outgoing messages generate inline previews. "
-            "unidentified_delivery_indicators controls whether sealed-sender delivery icons are shown. "
-            "All parameters are optional — omit any setting you do not want to change. "
-            "Changes take effect immediately and persist across sessions. "
-            "Use get_configuration to read the current values before modifying. "
-            "Use update_account for account-level privacy settings (discoverability, username). "
-            "Do NOT use to change your profile name or photo — use update_profile for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "read_receipts": {"type": "boolean", "description": "Enable/disable sending read receipts"},
-                "typing_indicators": {"type": "boolean", "description": "Enable/disable sending typing indicators"},
-                "link_previews": {"type": "boolean", "description": "Enable/disable link previews in messages"},
-                "unidentified_delivery_indicators": {"type": "boolean", "description": "Show/hide sealed sender indicators"},
-            },
-        },
-    ),
-    Tool(
         name="list_sticker_packs",
         description=(
             "List all sticker packs installed on this Signal account. "
@@ -1087,71 +364,6 @@ TOOLS += [
             "Use add_sticker_pack to install a new pack from a signal.art URL."
         ),
         inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
-        name="add_sticker_pack",
-        description=(
-            "Install a Signal sticker pack from a signal.art URL. "
-            "Once installed, use list_sticker_packs to browse pack contents, then send_sticker or "
-            "send_group_sticker to send individual stickers. "
-            "The URI must be a signal.art URL in the format: https://signal.art/addstickers/#pack_id=...&pack_key=..."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "uri": {"type": "string", "description": "Sticker pack URL (https://signal.art/addstickers/#pack_id=...&pack_key=...)"},
-            },
-            "required": ["uri"],
-        },
-    ),
-    Tool(
-        name="send_sticker",
-        description=(
-            "Send a single sticker to a Signal contact in a direct message. "
-            "Stickers are small images from installed packs delivered as a distinct message type — "
-            "they appear rendered in the conversation, not as a file attachment. "
-            "Both pack_id (a hex string) and sticker_id (a 0-based integer) must match an installed pack; "
-            "referencing an uninstalled pack or an invalid sticker_id returns an error. "
-            "Use list_sticker_packs to browse all installed packs and retrieve valid pack_id and sticker_id values. "
-            "If no packs are installed, call add_sticker_pack first with a signal.art URL to install one. "
-            "Use when you want to send an expressive image reaction or decoration to a contact. "
-            "Use send_group_sticker to send a sticker to a group instead of a DM. "
-            "Do NOT use to send a regular image file — use send_attachment for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number in E.164 format"},
-                "pack_id": {"type": "string", "description": "Sticker pack ID (hex string from list_sticker_packs)"},
-                "sticker_id": {"type": "integer", "description": "Sticker ID within the pack (from list_sticker_packs)"},
-            },
-            "required": ["recipient", "pack_id", "sticker_id"],
-        },
-    ),
-    Tool(
-        name="send_group_sticker",
-        description=(
-            "Send a single sticker to a Signal group so all members receive it. "
-            "Stickers are small images from installed packs delivered as a distinct message type — "
-            "they appear rendered in the group conversation, not as a file attachment. "
-            "Both pack_id (a hex string) and sticker_id (a 0-based integer) must match an installed pack; "
-            "referencing an uninstalled pack or invalid sticker_id returns an error. "
-            "Use list_sticker_packs to browse installed packs and retrieve valid pack_id and sticker_id values. "
-            "If no packs are installed, call add_sticker_pack first with a signal.art URL to install one. "
-            "Use list_groups to obtain the group_id. "
-            "Use when sending an expressive image reaction or decoration to a group chat. "
-            "Use send_sticker for direct messages instead of group chats. "
-            "Do NOT use to send a regular image file — use send_group_attachment for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "group_id": {"type": "string", "description": "Group ID (get from list_groups)"},
-                "pack_id": {"type": "string", "description": "Sticker pack ID (hex string from list_sticker_packs)"},
-                "sticker_id": {"type": "integer", "description": "Sticker ID within the pack (from list_sticker_packs)"},
-            },
-            "required": ["group_id", "pack_id", "sticker_id"],
-        },
     ),
     Tool(
         name="list_attachments",
@@ -1198,26 +410,6 @@ TOOLS += [
         },
     ),
     Tool(
-        name="upload_sticker_pack",
-        description=(
-            "Package and publish a sticker pack to Signal's CDN from local image files. "
-            "Accepts a local manifest.json describing the pack, or a zip archive containing both the manifest and images. "
-            "Signal's CDN stores the pack and returns a signal.art install URL you can share with others. "
-            "Recipients call add_sticker_pack with the URL to install the pack and send its stickers. "
-            "After publishing, the pack is available on Signal's network indefinitely. "
-            "Use when you want to create and distribute a custom sticker pack. "
-            "Use add_sticker_pack to install an existing pack for sending. "
-            "Do NOT use to install a pack — use add_sticker_pack for that."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Local path to manifest.json or a zip containing the sticker pack"},
-            },
-            "required": ["path"],
-        },
-    ),
-    Tool(
         name="list_accounts",
         description=(
             "List all Signal accounts (phone numbers) registered in signal-cli on this machine. "
@@ -1227,118 +419,6 @@ TOOLS += [
             "Use when you need to confirm which accounts are available before sending or receiving messages."
         ),
         inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
-        name="update_account",
-        description=(
-            "Update Signal account-level privacy and identity settings. "
-            "All parameters are optional — only provide the settings you want to change. "
-            "discoverable_by_number controls whether others can find you by phone number. "
-            "number_sharing controls whether your number is shared with contacts you message. "
-            "username sets a @username alias; delete_username removes it. "
-            "Use get_configuration for messaging settings (read receipts, typing indicators)."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "device_name": {"type": "string", "description": "Name for this device shown in linked devices list"},
-                "discoverable_by_number": {"type": "boolean", "description": "Allow others to find your account by phone number"},
-                "number_sharing": {"type": "boolean", "description": "Share your phone number when sending messages"},
-                "username": {"type": "string", "description": "Set a Signal username (without @) as an alias for your number"},
-                "delete_username": {"type": "boolean", "description": "Delete your current Signal username"},
-                "unrestricted_unidentified_sender": {"type": "boolean", "description": "Allow sealed-sender messages from anyone (not just contacts)"},
-            },
-        },
-    ),
-    Tool(
-        name="set_pin",
-        description=(
-            "Set a Signal Registration Lock PIN to protect your account against SIM-swap and unauthorized re-registration. "
-            "Once set, anyone attempting to re-register your phone number on Signal must provide this PIN. "
-            "The PIN must be 4–20 digits. Signal also uses the PIN to derive your storage encryption key. "
-            "If you forget the PIN, you must wait 7 days for the lock to expire before re-registering. "
-            "Use when you want to harden your account against SIM-swap attacks. "
-            "Use remove_pin to disable the lock. "
-            "Do NOT set a PIN you might forget — losing it locks you out of your account for 7 days."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "pin": {"type": "string", "description": "4–20 digit numeric PIN (e.g. '123456')"},
-            },
-            "required": ["pin"],
-        },
-    ),
-    Tool(
-        name="remove_pin",
-        description=(
-            "Remove the Signal Registration Lock PIN, disabling re-registration protection on this account. "
-            "After removal, anyone who controls your phone number can re-register Signal without a PIN. "
-            "Use only if you intentionally want to disable the registration lock. "
-            "Use set_pin to set a new PIN instead of removing the existing one. "
-            "Do NOT remove the PIN if you rely on it as a security measure against SIM-swap attacks."
-        ),
-        inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
-        name="start_change_number",
-        description=(
-            "Begin migrating your Signal account to a new phone number. "
-            "Signal sends a 6-digit verification code to the new number via SMS (or voice call if voice=true). "
-            "After calling this tool, call finish_change_number with the new number and received code to complete the migration. "
-            "If Signal rejects the request due to rate limits, provide a captcha token obtained from "
-            "https://signalcaptchas.org/challenge/generate.html. "
-            "The account remains on the old number until finish_change_number succeeds. "
-            "Use finish_change_number immediately after receiving the SMS code to complete the change. "
-            "Do NOT call finish_change_number without first calling this tool — the verification code will not exist."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number":  {"type": "string", "description": "New phone number in E.164 format (e.g. +12025551234)"},
-                "voice":   {"type": "boolean", "description": "Request code via voice call instead of SMS (default: false)"},
-                "captcha": {"type": "string",  "description": "Captcha token (required only if Signal demands it)"},
-            },
-            "required": ["number"],
-        },
-    ),
-    Tool(
-        name="finish_change_number",
-        description=(
-            "Complete the second step of a Signal phone number change by submitting the verification code. "
-            "Must be called after start_change_number, which initiates the number change and triggers the SMS/voice code. "
-            "number is the new E.164 phone number you are migrating to. "
-            "verification_code is the 6-digit code received via SMS or voice call to that number. "
-            "pin is required only if your account has a Signal Registration Lock PIN set — omit otherwise. "
-            "On success, the account is permanently migrated to the new number; all linked devices are updated. "
-            "Use start_change_number first to request the verification code before calling this tool. "
-            "Do NOT call this tool without first calling start_change_number — the code will not exist."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "number":            {"type": "string", "description": "The new phone number in E.164 format"},
-                "verification_code": {"type": "string", "description": "6-digit verification code from SMS/voice"},
-                "pin":               {"type": "string", "description": "Registration lock PIN (required if the account has a PIN set)"},
-            },
-            "required": ["number", "verification_code"],
-        },
-    ),
-    Tool(
-        name="submit_rate_limit_challenge",
-        description=(
-            "Unblock the account after Signal applies a rate limit. "
-            "Provide the challenge token from the error and a solved captcha from "
-            "https://signalcaptchas.org/challenge/generate.html"
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "challenge": {"type": "string", "description": "Challenge token from the rate-limit error"},
-                "captcha":   {"type": "string", "description": "Solved captcha token from the Signal captcha page"},
-            },
-            "required": ["challenge", "captcha"],
-        },
     ),
     Tool(
         name="prune_store",
@@ -1355,26 +435,6 @@ TOOLS += [
         },
     ),
     Tool(
-        name="set_webhook",
-        description=(
-            "Configure a webhook URL that receives a POST request for every incoming Signal message. "
-            "The payload is a JSON object with fields: event, timestamp, sender, recipient, group_id, body, attachments, quote_id. "
-            "Use this to connect signal-mcp to n8n, Make, Home Assistant, or any local HTTP endpoint. "
-            "Pass url=null to disable webhooks. The URL is saved to disk and persists across restarts."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "Webhook URL to POST to (e.g. 'http://localhost:5678/webhook/signal'). Omit or pass null to clear."},
-            },
-        },
-    ),
-    Tool(
-        name="get_webhook",
-        description="Return the currently configured webhook URL, or null if none is set.",
-        inputSchema={"type": "object", "properties": {}},
-    ),
-    Tool(
         name="find_contact",
         description=(
             "Search contacts by name or phone number fragment. "
@@ -1389,73 +449,26 @@ TOOLS += [
             "required": ["query"],
         },
     ),
-    Tool(
-        name="schedule_message",
-        description=(
-            "Schedule a message to be sent at a specific future time. "
-            "The message will be delivered when the background service runs (install-service) "
-            "or when run_scheduled_messages is called manually. "
-            "Returns the scheduled job ID — use cancel_scheduled_message to cancel it."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "recipient": {"type": "string", "description": "Phone number in E.164 format (for DMs). Use group_id for group messages."},
-                "group_id": {"type": "string", "description": "Group ID (for group messages). Mutually exclusive with recipient."},
-                "message": {"type": "string", "description": "Message text to send"},
-                "send_at": {"type": "string", "description": "When to send — ISO datetime string (e.g. '2024-06-01T09:00:00' or '2024-06-01 09:00')"},
-            },
-            "required": ["message", "send_at"],
-        },
-    ),
-    Tool(
-        name="list_scheduled_messages",
-        description=(
-            "List pending scheduled messages. "
-            "Returns scheduled jobs with their ID, recipient, send time, and status. "
-            "Use cancel_scheduled_message to cancel a pending job."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "include_done": {"type": "boolean", "description": "Include already-sent, cancelled, and failed messages (default: false)"},
-            },
-        },
-    ),
-    Tool(
-        name="cancel_scheduled_message",
-        description=(
-            "Cancel a pending scheduled message by its job ID. "
-            "Use list_scheduled_messages to find the ID. "
-            "Returns an error if the message was already sent or does not exist."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "job_id": {"type": "integer", "description": "Scheduled message job ID from list_scheduled_messages"},
-            },
-            "required": ["job_id"],
-        },
-    ),
-    Tool(
-        name="run_scheduled_messages",
-        description=(
-            "Process and send any scheduled messages that are currently due. "
-            "The background service calls this automatically, but you can also call it manually "
-            "to deliver messages immediately without waiting for the next service run."
-        ),
-        inputSchema={"type": "object", "properties": {}},
-    ),
 ]
 
 
-async def _list_tools(params: RequestParams) -> ListToolsResult:
+async def _list_tools(ctx, params: RequestParams) -> ListToolsResult:
+    # mcp >= 2.0 invokes request handlers as (ctx, params)
     return ListToolsResult(tools=TOOLS)
 
 
-async def call_tool(params: CallToolRequestParams) -> CallToolResult:
+_TOOL_NAMES = {t.name for t in TOOLS}
+
+
+async def call_tool(ctx, params: CallToolRequestParams) -> CallToolResult:
     name = params.name
     arguments = params.arguments or {}
+
+    # Culper read-only fork: reject unregistered tools (including all removed
+    # write/destructive tools) before any daemon interaction.
+    if name not in _TOOL_NAMES:
+        return _err(f"Unknown tool: {name}")
+
     client = get_client()  # noqa: F841 — used throughout the giant match below
 
     try:
@@ -1464,104 +477,23 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
 
         # Validate required parameters up front (gives clean error instead of KeyError)
         _REQUIRED: dict[str, list[str]] = {
-            "send_message":         ["recipient", "message"],
-            "send_group_message":   ["group_id", "message"],
-            "send_note_to_self":    ["message"],
-            "send_attachment":      ["recipient"],
-            "send_group_attachment":["group_id"],
-            "send_sticker":         ["recipient", "pack_id", "sticker_id"],
-            "send_group_sticker":   ["group_id", "pack_id", "sticker_id"],
             "get_conversation":     ["recipient"],
             "search_messages":      ["query"],
-            "react_to_message":     ["target_author", "target_timestamp", "emoji"],
-            "set_typing":           ["recipient"],
             "get_profile":          ["number"],
-            "block_contact":        ["number"],
-            "unblock_contact":      ["number"],
-            "remove_contact":       ["number"],
-            "update_contact":       ["number", "name"],
-            "create_group":         ["name", "members"],
-            "join_group":           ["uri"],
-            "add_device":           ["uri"],
-            "remove_device":        ["device_id"],
-            "delete_message":       ["recipient", "target_timestamp"],
-            "delete_group_message": ["group_id", "target_timestamp"],
-            "send_read_receipt":    ["sender", "timestamps"],
-            "update_group":         ["group_id"],
-            "leave_group":          ["group_id"],
-            "set_expiration_timer": ["expiration_seconds"],
-            "trust_identity":       ["number"],
             "get_attachment":       ["filename"],
-            "add_sticker_pack":     ["uri"],
             "get_sticker":          ["pack_id", "sticker_id"],
-            "upload_sticker_pack":  ["path"],
-            "set_pin":              ["pin"],
-            "edit_message":         ["target_timestamp", "message"],
             "clear_local_store":    ["confirm"],
             "delete_local_messages":["recipient"],
             "get_user_status":      ["recipients"],
-            "pin_message":                    ["target_author", "target_timestamp"],
-            "unpin_message":                  ["target_author", "target_timestamp"],
-            "admin_delete_message":           ["group_id", "target_author", "target_timestamp"],
-            "update_device":                  ["device_id", "name"],
             "mark_as_unread":                 ["message_ids"],
             "get_avatar":                     ["identifier"],
-            "send_message_request_response":  ["sender", "accept"],
-            "create_poll":                    ["question", "options"],
-            "vote_poll":                      ["target_author", "target_timestamp", "poll_id", "votes"],
-            "terminate_poll":                 ["target_author", "target_timestamp", "poll_id"],
-            "start_change_number":            ["number"],
-            "finish_change_number":           ["number", "verification_code"],
-            "submit_rate_limit_challenge":    ["challenge", "captcha"],
         }
         if name in _REQUIRED:
             err = _require(arguments, *_REQUIRED[name])
             if err:
                 return _err(err)
 
-        if name == "send_message":
-            result = await client.send_message(
-                arguments["recipient"], arguments["message"],
-                quote_author=arguments.get("quote_author"),
-                quote_timestamp=arguments.get("quote_timestamp"),
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp, "recipient": result.recipient})
-
-        elif name == "send_group_message":
-            result = await client.send_group_message(
-                arguments["group_id"], arguments["message"],
-                mentions=arguments.get("mentions"),
-                quote_author=arguments.get("quote_author"),
-                quote_timestamp=arguments.get("quote_timestamp"),
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp, "group_id": result.recipient})
-
-        elif name == "send_note_to_self":
-            result = await client.send_note_to_self(arguments["message"])
-            return _ok({"status": "sent", "timestamp": result.timestamp})
-
-        elif name == "edit_message":
-            await client.edit_message(
-                target_timestamp=arguments["target_timestamp"],
-                message=arguments["message"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"status": "message edited", "target_timestamp": arguments["target_timestamp"]})
-
-        elif name == "send_sticker":
-            result = await client.send_sticker(
-                arguments["recipient"], arguments["pack_id"], arguments["sticker_id"]
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp})
-
-        elif name == "send_group_sticker":
-            result = await client.send_group_sticker(
-                arguments["group_id"], arguments["pack_id"], arguments["sticker_id"]
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp})
-
-        elif name == "list_attachments":
+        if name == "list_attachments":
             return _ok(client.list_attachments())
 
         elif name == "get_attachment":
@@ -1632,94 +564,13 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
             )
             return _ok([client._enrich_message(m) for m in messages])
 
-        elif name == "send_attachment":
-            path_arg = arguments.get("paths") or arguments.get("path")
-            if not path_arg:
-                return _err("Either path or paths is required")
-            result = await client.send_attachment(
-                arguments["recipient"],
-                path_arg,
-                caption=arguments.get("caption", ""),
-                view_once=arguments.get("view_once", False),
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp})
-
-        elif name == "send_group_attachment":
-            path_arg = arguments.get("paths") or arguments.get("path")
-            if not path_arg:
-                return _err("Either path or paths is required")
-            result = await client.send_group_attachment(
-                arguments["group_id"],
-                path_arg,
-                caption=arguments.get("caption", ""),
-                view_once=arguments.get("view_once", False),
-            )
-            return _ok({"status": "sent", "timestamp": result.timestamp})
-
-        elif name == "react_to_message":
-            await client.react_to_message(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                emoji=arguments["emoji"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-                remove=arguments.get("remove", False),
-            )
-            action = "reaction removed" if arguments.get("remove") else "reaction sent"
-            return _ok({"status": action})
-
-        elif name == "set_typing":
-            await client.set_typing(arguments["recipient"], stop=arguments.get("stop", False))
-            return _ok({"status": "typing indicator sent"})
-
         elif name == "get_profile":
             contact = await client.get_profile(arguments["number"])
             return _ok(contact.to_dict())
 
-        elif name == "block_contact":
-            await client.block_contact(arguments["number"])
-            return _ok({"status": "blocked", "number": arguments["number"]})
-
-        elif name == "unblock_contact":
-            await client.unblock_contact(arguments["number"])
-            return _ok({"status": "unblocked", "number": arguments["number"]})
-
-        elif name == "remove_contact":
-            await client.remove_contact(arguments["number"])
-            return _ok({"status": "removed", "number": arguments["number"]})
-
-        elif name == "update_profile":
-            await client.update_profile(
-                name=arguments.get("name"),
-                about=arguments.get("about"),
-                avatar_path=arguments.get("avatar_path"),
-                remove_avatar=arguments.get("remove_avatar", False),
-            )
-            return _ok({"status": "profile updated"})
-
-        elif name == "create_group":
-            result = await client.create_group(
-                arguments["name"],
-                arguments["members"],
-                description=arguments.get("description"),
-            )
-            return _ok({"status": "group created", **result})
-
-        elif name == "join_group":
-            result = await client.join_group(arguments["uri"])
-            return _ok({"status": "joined group", **result})
-
         elif name == "list_devices":
             devices = await client.list_devices()
             return _ok(devices)
-
-        elif name == "add_device":
-            await client.add_device(arguments["uri"])
-            return _ok({"status": "device linked"})
-
-        elif name == "remove_device":
-            await client.remove_device(arguments["device_id"])
-            return _ok({"status": "device removed", "device_id": arguments["device_id"]})
 
         elif name == "get_own_number":
             return _ok({"number": client.get_own_number()})
@@ -1769,150 +620,23 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
             conversations = await client.list_conversations()
             return _ok(conversations)
 
-        elif name == "delete_message":
-            await client.delete_message(arguments["recipient"], arguments["target_timestamp"])
-            return _ok({"status": "deleted"})
-
-        elif name == "delete_group_message":
-            await client.delete_group_message(arguments["group_id"], arguments["target_timestamp"])
-            return _ok({"status": "deleted"})
-
-        elif name == "send_read_receipt":
-            await client.send_read_receipt(arguments["sender"], arguments["timestamps"])
-            return _ok({"status": "read receipt sent"})
-
-        elif name == "update_contact":
-            await client.update_contact(arguments["number"], arguments["name"])
-            return _ok({"status": "contact updated", "number": arguments["number"], "name": arguments["name"]})
-
-        elif name == "update_group":
-            await client.update_group(
-                arguments["group_id"],
-                name=arguments.get("name"),
-                description=arguments.get("description"),
-                add_members=arguments.get("add_members"),
-                remove_members=arguments.get("remove_members"),
-                expiration_seconds=arguments.get("expiration_seconds"),
-                add_admins=arguments.get("add_admins"),
-                remove_admins=arguments.get("remove_admins"),
-                link_mode=arguments.get("link_mode"),
-            )
-            return _ok({"status": "group updated", "group_id": arguments["group_id"]})
-
-        elif name == "leave_group":
-            await client.leave_group(arguments["group_id"])
-            return _ok({"status": "left group", "group_id": arguments["group_id"]})
-
-        elif name == "pin_message":
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either recipient or group_id is required")
-            await client.pin_message(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"status": "message pinned"})
-
-        elif name == "unpin_message":
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either recipient or group_id is required")
-            await client.unpin_message(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"status": "message unpinned"})
-
-        elif name == "admin_delete_message":
-            await client.admin_delete_message(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                group_id=arguments["group_id"],
-            )
-            return _ok({"status": "message deleted by admin"})
-
-        elif name == "send_contacts_sync":
-            await client.send_contacts_sync()
-            return _ok({"status": "contacts synced to linked devices"})
-
-        elif name == "update_device":
-            await client.update_device(
-                device_id=int(arguments["device_id"]),
-                name=arguments["name"],
-            )
-            return _ok({"status": "device updated", "device_id": arguments["device_id"], "name": arguments["name"]})
-
-        elif name == "set_expiration_timer":
-            await client.set_expiration_timer(
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-                expiration=arguments["expiration_seconds"],
-            )
-            return _ok({"status": "expiration timer set", "seconds": arguments["expiration_seconds"]})
-
         elif name == "list_identities":
             identities = await client.list_identities(number=arguments.get("number"))
             return _ok(identities)
 
-        elif name == "trust_identity":
-            await client.trust_identity(
-                arguments["number"],
-                trust_all_known=not arguments.get("safety_number"),
-                safety_number=arguments.get("safety_number"),
-            )
-            return _ok({"status": "trusted", "number": arguments["number"]})
-
         elif name == "get_configuration":
             return _ok(await client.get_configuration())
 
-        elif name == "update_configuration":
-            await client.update_configuration(
-                read_receipts=arguments.get("read_receipts"),
-                typing_indicators=arguments.get("typing_indicators"),
-                link_previews=arguments.get("link_previews"),
-                unidentified_delivery_indicators=arguments.get("unidentified_delivery_indicators"),
-            )
-            return _ok({"status": "updated"})
-
         elif name == "list_sticker_packs":
             return _ok(await client.list_sticker_packs())
-
-        elif name == "add_sticker_pack":
-            await client.add_sticker_pack(arguments["uri"])
-            return _ok({"status": "installed"})
 
         elif name == "get_sticker":
             data = await client.get_sticker(arguments["pack_id"], int(arguments["sticker_id"]))
             return _ok({"base64": data})
 
-        elif name == "upload_sticker_pack":
-            url = await client.upload_sticker_pack(arguments["path"])
-            return _ok({"url": url})
-
         elif name == "list_accounts":
             accounts = await client.list_accounts()
             return _ok(accounts)
-
-        elif name == "update_account":
-            await client.update_account(
-                device_name=arguments.get("device_name"),
-                discoverable_by_number=arguments.get("discoverable_by_number"),
-                number_sharing=arguments.get("number_sharing"),
-                username=arguments.get("username"),
-                delete_username=arguments.get("delete_username", False),
-                unrestricted_unidentified_sender=arguments.get("unrestricted_unidentified_sender"),
-            )
-            return _ok({"status": "account updated"})
-
-        elif name == "set_pin":
-            await client.set_pin(arguments["pin"])
-            return _ok({"status": "PIN set"})
-
-        elif name == "remove_pin":
-            await client.remove_pin()
-            return _ok({"status": "PIN removed"})
 
         elif name == "clear_local_store":
             if not arguments.get("confirm"):
@@ -1940,51 +664,6 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
             avatar_data = await client.get_avatar(arguments["identifier"])
             return _ok({"identifier": arguments["identifier"], "base64": avatar_data, "has_avatar": bool(avatar_data)})
 
-        elif name == "send_message_request_response":
-            await client.send_message_request_response(arguments["sender"], arguments["accept"])
-            action = "accepted" if arguments["accept"] else "declined"
-            return _ok({"status": f"message request {action}", "sender": arguments["sender"]})
-
-        elif name == "create_poll":
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either recipient or group_id is required")
-            options = arguments.get("options", [])
-            if len(options) < 2:
-                return _err("Poll requires at least 2 options")
-            result = await client.create_poll(
-                question=arguments["question"],
-                options=options,
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-                multi_select=arguments.get("multi_select", False),
-            )
-            return _ok({"status": "poll created", "timestamp": result.timestamp})
-
-        elif name == "vote_poll":
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either recipient or group_id is required")
-            await client.vote_poll(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                poll_id=arguments["poll_id"],
-                votes=arguments["votes"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"status": "vote sent"})
-
-        elif name == "terminate_poll":
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either recipient or group_id is required")
-            await client.terminate_poll(
-                target_author=arguments["target_author"],
-                target_timestamp=arguments["target_timestamp"],
-                poll_id=arguments["poll_id"],
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"status": "poll terminated"})
-
         elif name == "export_messages":
             fmt = arguments.get("format", "json")
             if fmt not in ("json", "csv"):
@@ -2010,42 +689,6 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
             count = await asyncio.to_thread(_store.prune_old_messages, days)
             return _ok({"deleted": count, "older_than_days": days})
 
-        elif name == "start_change_number":
-            await client.start_change_number(
-                number=arguments["number"],
-                voice=arguments.get("voice", False),
-                captcha=arguments.get("captcha"),
-            )
-            return _ok({"status": "verification code sent", "number": arguments["number"]})
-
-        elif name == "finish_change_number":
-            await client.finish_change_number(
-                number=arguments["number"],
-                verification_code=arguments["verification_code"],
-                pin=arguments.get("pin"),
-            )
-            return _ok({"status": "number changed", "number": arguments["number"]})
-
-        elif name == "submit_rate_limit_challenge":
-            await client.submit_rate_limit_challenge(
-                challenge=arguments["challenge"],
-                captcha=arguments["captcha"],
-            )
-            return _ok({"status": "challenge submitted"})
-
-        elif name == "set_webhook":
-            from .config import set_webhook_url
-            url = arguments.get("url") or None
-            set_webhook_url(url)
-            if url:
-                return _ok({"status": "webhook set", "url": url})
-            return _ok({"status": "webhook cleared"})
-
-        elif name == "get_webhook":
-            from .config import get_webhook_url
-            url = get_webhook_url()
-            return _ok({"url": url})
-
         elif name == "find_contact":
             err = _require(arguments, "query")
             if err:
@@ -2053,50 +696,6 @@ async def call_tool(params: CallToolRequestParams) -> CallToolResult:
             await client.ensure_daemon()
             contacts = await client.list_contacts(search=arguments["query"])
             return _ok([c.to_dict() for c in contacts])
-
-        elif name == "schedule_message":
-            err = _require(arguments, "message", "send_at")
-            if err:
-                return _err(err)
-            if not arguments.get("recipient") and not arguments.get("group_id"):
-                return _err("Either 'recipient' or 'group_id' is required")
-            from datetime import datetime as _dt
-            send_at_str = arguments["send_at"]
-            send_at = None
-            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
-                try:
-                    send_at = _dt.strptime(send_at_str, fmt)
-                    break
-                except ValueError:
-                    continue
-            if send_at is None:
-                return _err(f"Invalid send_at format: '{send_at_str}'. Use ISO datetime e.g. '2024-06-01T09:00:00'")
-            if send_at <= _dt.now():
-                return _err("send_at must be in the future")
-            job_id = _store.add_scheduled_message(
-                message=arguments["message"],
-                send_at=send_at,
-                recipient=arguments.get("recipient"),
-                group_id=arguments.get("group_id"),
-            )
-            return _ok({"job_id": job_id, "send_at": send_at.isoformat(), "status": "scheduled"})
-
-        elif name == "list_scheduled_messages":
-            jobs = _store.list_scheduled_messages(include_done=arguments.get("include_done", False))
-            return _ok(jobs)
-
-        elif name == "cancel_scheduled_message":
-            err = _require(arguments, "job_id")
-            if err:
-                return _err(err)
-            cancelled = _store.cancel_scheduled_message(int(arguments["job_id"]))
-            if cancelled:
-                return _ok({"status": "cancelled", "job_id": arguments["job_id"]})
-            return _err(f"No pending scheduled message with id={arguments['job_id']}")
-
-        elif name == "run_scheduled_messages":
-            results = await client.process_scheduled_messages()
-            return _ok({"processed": len(results), "results": results})
 
         else:
             return _err(f"Unknown tool: {name}")

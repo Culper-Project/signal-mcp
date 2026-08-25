@@ -1,5 +1,19 @@
 # signal-mcp
 
+> ## Culper read-only fork
+>
+> **Pinned to upstream `googlarz/signal-mcp` @ `8627f92178c586fa4dbaa907f99b20a40b671db7`. Write/destructive MCP tools and webhook egress removed. Do not pull upstream without re-audit.**
+>
+> This fork exposes Signal to the model as a **read-only lane**: history, search, conversations, contacts/groups/devices/identities listings, attachments, desktop import/sync, and local-store maintenance. Everything that sends, edits, deletes, or mutates Signal account state has been removed at the source level (tool registration AND handler), along with the entire outbound-webhook feature (`webhook.py`, `set-webhook`/`get-webhook` CLI commands, `SIGNAL_MCP_WEBHOOK`, `receive --webhook`) — zero egress paths in the code. Attachments now default to `~/.signal-lane/attachments` instead of `~/Downloads/signal-attachments`.
+>
+> **MCP tools removed (50):**
+> `send_message`, `send_group_message`, `send_note_to_self`, `send_attachment`, `send_group_attachment`, `send_sticker`, `send_group_sticker`, `edit_message`, `react_to_message`, `set_typing`, `delete_message`, `delete_group_message`, `admin_delete_message`, `send_read_receipt`, `send_message_request_response`, `block_contact`, `unblock_contact`, `remove_contact`, `update_contact`, `update_profile`, `send_contacts_sync`, `create_group`, `join_group`, `update_group`, `leave_group`, `pin_message`, `unpin_message`, `add_device`, `remove_device`, `update_device`, `create_poll`, `vote_poll`, `terminate_poll`, `set_expiration_timer`, `trust_identity`, `update_configuration`, `update_account`, `set_pin`, `remove_pin`, `start_change_number`, `finish_change_number`, `submit_rate_limit_challenge`, `add_sticker_pack`, `upload_sticker_pack`, `set_webhook`, `get_webhook`, `schedule_message`, `list_scheduled_messages`, `cancel_scheduled_message`, `run_scheduled_messages`
+>
+> **MCP tools kept (29, read/local-store only):**
+> `receive_messages`, `get_unread`, `get_conversation`, `search_messages`, `list_conversations`, `list_contacts`, `find_contact`, `list_groups`, `get_profile`, `get_avatar`, `get_user_status`, `list_devices`, `list_identities`, `list_accounts`, `get_own_number`, `get_configuration`, `list_sticker_packs`, `get_sticker`, `list_attachments`, `get_attachment`, `import_desktop`, `sync_desktop`, `send_sync_request` (pulls history from your own primary device — no third-party effect), `store_stats`, `mark_as_unread` (local store only), `export_messages`, `prune_store`, `delete_local_messages`, `clear_local_store` (the last three touch only the local cache, never Signal)
+>
+> Notes: `get_conversation`/`get_unread` mark messages read **only in the local store** — the `send_read_receipt` tool (Signal-visible `sendReceipt`) is removed. The CLI (`signal-mcp send`, etc.) retains its human-operated write commands; the hardening targets the MCP tool surface plus all code egress. Some remaining tool descriptions still reference removed tools; those references are inert.
+
 [![Tests](https://github.com/googlarz/signal-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/googlarz/signal-mcp/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/signal-mcp)](https://pypi.org/project/Signal-MCP/)
 [![Python](https://img.shields.io/pypi/pyversions/signal-mcp)](https://pypi.org/project/Signal-MCP/)

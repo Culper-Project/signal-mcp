@@ -37,14 +37,6 @@ def reset_client(monkeypatch, tmp_path):
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_send_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 123})))
-    result = await call_tool("send_message", {"recipient": "+19999999999", "message": "Hi"})
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_list_contacts_empty():
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok([])))
     result = await call_tool("list_contacts", {})
@@ -67,43 +59,6 @@ async def test_tool_unknown():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_block_contact():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("block_contact", {"number": "+19999999999"})
-    assert "blocked" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_set_typing():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("set_typing", {"recipient": "+19999999999"})
-    assert "typing" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_react():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("react_to_message", {
-        "recipient": "+19999999999",
-        "target_author": "+11111111111",
-        "target_timestamp": 1700000000000,
-        "emoji": "❤️",
-    })
-    assert "reaction sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_group_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 456})))
-    result = await call_tool("send_group_message", {"group_id": "abc123==", "message": "Hello group"})
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_receive_empty():
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok([])))
     result = await call_tool("receive_messages", {"timeout": 1})
@@ -114,14 +69,6 @@ async def test_tool_receive_empty():
 async def test_tool_get_unread_empty():
     result = await call_tool("get_unread", {})
     assert "[]" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_group_attachment():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 789})))
-    result = await call_tool("send_group_attachment", {"group_id": "abc123==", "path": "/tmp/photo.jpg"})
-    assert "sent" in result[0].text
 
 
 @pytest.mark.asyncio
@@ -161,58 +108,10 @@ async def test_tool_list_conversations_empty():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_delete_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("delete_message", {"recipient": "+19999999999", "target_timestamp": 1700000000000})
-    assert "deleted" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_delete_group_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("delete_group_message", {"group_id": "grp1==", "target_timestamp": 1700000000000})
-    assert "deleted" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_read_receipt():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("send_read_receipt", {"sender": "+19999999999", "timestamps": [1700000000000]})
-    assert "read receipt" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_contact():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_contact", {"number": "+19999999999", "name": "Alice"})
-    assert "updated" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_leave_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("leave_group", {"group_id": "grp123=="})
-    assert "left group" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_list_identities():
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok([])))
     result = await call_tool("list_identities", {})
     assert "[]" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_trust_identity():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("trust_identity", {"number": "+19999999999"})
-    assert "trusted" in result[0].text
 
 
 @pytest.mark.asyncio
@@ -228,67 +127,11 @@ async def test_tool_store_stats_no_daemon_needed(monkeypatch):
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_unblock_contact():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("unblock_contact", {"number": "+19999999999"})
-    assert "unblocked" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_remove_contact():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("remove_contact", {"number": "+19999999999"})
-    assert "removed" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_profile():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_profile", {"name": "Alice", "about": "Hey there"})
-    assert "profile updated" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_create_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"groupId": "newgrp=="})))
-    result = await call_tool("create_group", {"name": "My Group", "members": ["+19999999999"]})
-    assert "group created" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_join_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"groupId": "joinedgrp=="})))
-    result = await call_tool("join_group", {"uri": "https://signal.group/#abc"})
-    assert "joined group" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_list_devices():
     devices = [{"id": 1, "name": "iPhone"}, {"id": 2, "name": "MacBook"}]
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok(devices)))
     result = await call_tool("list_devices", {})
     assert "iPhone" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_add_device():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("add_device", {"uri": "sgnl://linkdevice?uuid=abc&pub_key=xyz"})
-    assert "device linked" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_remove_device():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("remove_device", {"device_id": 2})
-    assert "device removed" in result[0].text
 
 
 @pytest.mark.asyncio
@@ -299,118 +142,12 @@ async def test_tool_get_own_number():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_send_read_receipt_marks_store_read():
-    """send_read_receipt should update is_read in local store."""
-    from signal_mcp.models import Message
-    from datetime import datetime
-    # Save a message that will be "read"
-    msg = Message(id="1700000000000", sender="+2", body="hi",
-                  timestamp=datetime(2024, 1, 1))
-    _store_mod.save_message(msg)
-    assert _store_mod.get_unread_messages(own_number="+10000000000")[0].id == "1700000000000"
-
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    await call_tool("send_read_receipt", {"sender": "+2", "timestamps": [1700000000000]})
-    assert _store_mod.get_unread_messages(own_number="+10000000000") == []
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_group", {"group_id": "grp1==", "name": "New Name"})
-    assert "group updated" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_get_profile():
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok([
         {"number": "+19999999999", "uuid": "uuid-1", "profile": {"givenName": "Alice", "familyName": "Smith"}}
     ])))
     result = await call_tool("get_profile", {"number": "+19999999999"})
     assert "+19999999999" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_note_to_self():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 999})))
-    result = await call_tool("send_note_to_self", {"message": "Remember to buy milk"})
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_edit_message_dm():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("edit_message", {
-        "target_timestamp": 1700000000000,
-        "message": "corrected text",
-        "recipient": "+19999999999",
-    })
-    assert "edited" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_edit_message_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("edit_message", {
-        "target_timestamp": 1700000000000,
-        "message": "corrected",
-        "group_id": "grp1==",
-    })
-    assert "edited" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_message_with_quote():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 1})))
-    result = await call_tool("send_message", {
-        "recipient": "+19999999999",
-        "message": "Replying!",
-        "quote_author": "+11111111111",
-        "quote_timestamp": 1700000000000,
-    })
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_group_message_with_mentions():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 2})))
-    result = await call_tool("send_group_message", {
-        "group_id": "grp1==",
-        "message": "Hey +19999999999!",
-        "mentions": [{"start": 4, "length": 12, "author": "+19999999999"}],
-    })
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_attachment_view_once():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 3})))
-    result = await call_tool("send_attachment", {
-        "recipient": "+19999999999",
-        "path": "/tmp/photo.jpg",
-        "view_once": True,
-    })
-    assert "sent" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_group_admin_management():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_group", {
-        "group_id": "grp1==",
-        "add_admins": ["+19999999999"],
-        "remove_admins": ["+11111111111"],
-    })
-    assert "group updated" in result[0].text
 
 
 @respx.mock
@@ -457,33 +194,6 @@ async def test_tool_get_conversation_pagination():
 
 
 # ── New tools ─────────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_sticker():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 9})))
-    result = await call_tool("send_sticker", {
-        "recipient": "+19999999999",
-        "pack_id": "aabbcc",
-        "sticker_id": 3,
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "sent"
-    assert data["timestamp"] == 9
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_group_sticker():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 10})))
-    result = await call_tool("send_group_sticker", {
-        "group_id": "grp1==",
-        "pack_id": "aabbcc",
-        "sticker_id": 0,
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "sent"
-
 
 @pytest.mark.asyncio
 async def test_tool_list_attachments_empty(tmp_path, monkeypatch):
@@ -565,16 +275,16 @@ async def test_get_conversation_enriches_sender_name(monkeypatch):
 @pytest.mark.asyncio
 async def test_missing_required_param_returns_error():
     """Missing required params should return a clean error, not a KeyError."""
-    result = await call_tool("send_message", {"recipient": "+19999999999"})  # missing "message"
+    result = await call_tool("get_sticker", {"pack_id": "abc"})  # missing "sticker_id"
     assert "Missing required parameter" in result[0].text
-    assert "message" in result[0].text
+    assert "sticker_id" in result[0].text
 
 
 @pytest.mark.asyncio
 async def test_missing_multiple_required_params():
-    result = await call_tool("send_message", {})
-    assert "recipient" in result[0].text
-    assert "message" in result[0].text
+    result = await call_tool("get_sticker", {})
+    assert "pack_id" in result[0].text
+    assert "sticker_id" in result[0].text
 
 
 # ── Configuration tools ────────────────────────────────────────────────────────
@@ -592,17 +302,6 @@ async def test_tool_get_configuration():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_update_configuration():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_configuration", {"read_receipts": False})
-    data = json.loads(result[0].text)
-    assert data["status"] == "updated"
-
-
-# ── Sticker pack tools ─────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_list_sticker_packs():
     packs = [{"packId": "abc", "title": "Fun"}]
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok(packs)))
@@ -610,23 +309,6 @@ async def test_tool_list_sticker_packs():
     data = json.loads(result[0].text)
     assert data[0]["packId"] == "abc"
 
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_add_sticker_pack():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("add_sticker_pack", {"uri": "https://signal.art/addstickers/#pack_id=abc&pack_key=xyz"})
-    data = json.loads(result[0].text)
-    assert data["status"] == "installed"
-
-
-@pytest.mark.asyncio
-async def test_tool_add_sticker_pack_missing_uri():
-    result = await call_tool("add_sticker_pack", {})
-    assert "Missing required parameter" in result[0].text
-
-
-# ── Store management tools ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_tool_clear_local_store():
@@ -695,16 +377,6 @@ async def test_get_conversation_has_more_false_when_all_returned():
 
 # ── E.164 validation ───────────────────────────────────────────────────────────
 
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_message_invalid_number():
-    result = await call_tool("send_message", {"recipient": "notanumber", "message": "hi"})
-    assert "Error" in result[0].text
-    assert "E.164" in result[0].text
-
-
-# ── search_messages with sender filter ────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_tool_search_messages_sender_filter():
     from datetime import datetime as _dt
@@ -756,36 +428,6 @@ async def test_tool_export_messages_invalid_since():
 
 
 # ── set_expiration_timer ──────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_set_expiration_timer_dm():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("set_expiration_timer", {
-        "recipient": "+19999999999", "expiration_seconds": 86400
-    })
-    data = json.loads(result[0].text)
-    assert data["seconds"] == 86400
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_set_expiration_timer_group():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("set_expiration_timer", {
-        "group_id": "grp==", "expiration_seconds": 0
-    })
-    data = json.loads(result[0].text)
-    assert data["seconds"] == 0
-
-
-@pytest.mark.asyncio
-async def test_tool_set_expiration_timer_missing_param():
-    result = await call_tool("set_expiration_timer", {})
-    assert "Error" in result[0].text
-
-
-# ── receive_messages with message data ───────────────────────────────────────
 
 @respx.mock
 @pytest.mark.asyncio
@@ -904,98 +546,6 @@ async def test_tool_search_messages_offset():
 
 # ── react_to_message remove ───────────────────────────────────────────────────
 
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_react_remove():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("react_to_message", {
-        "target_author": "+1", "target_timestamp": 123, "emoji": "👍",
-        "recipient": "+2", "remove": True,
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "reaction removed"
-
-
-# ── pin_message / unpin_message ───────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_pin_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("pin_message", {
-        "target_author": "+1", "target_timestamp": 123, "group_id": "grp==",
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "message pinned"
-
-
-@pytest.mark.asyncio
-async def test_tool_pin_message_missing_conversation():
-    result = await call_tool("pin_message", {"target_author": "+1", "target_timestamp": 123})
-    assert "Error" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_unpin_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("unpin_message", {
-        "target_author": "+1", "target_timestamp": 123, "recipient": "+2",
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "message unpinned"
-
-
-# ── admin_delete_message ──────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_admin_delete_message():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("admin_delete_message", {
-        "group_id": "grp==", "target_author": "+1", "target_timestamp": 123,
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "message deleted by admin"
-
-
-@pytest.mark.asyncio
-async def test_tool_admin_delete_missing_param():
-    result = await call_tool("admin_delete_message", {"group_id": "grp=="})
-    assert "Error" in result[0].text
-
-
-# ── send_contacts_sync ────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_contacts_sync():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("send_contacts_sync", {})
-    data = json.loads(result[0].text)
-    assert "synced" in data["status"]
-
-
-# ── update_device ─────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_device():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_device", {"device_id": 2, "name": "My Mac"})
-    data = json.loads(result[0].text)
-    assert data["status"] == "device updated"
-    assert data["name"] == "My Mac"
-
-
-@pytest.mark.asyncio
-async def test_tool_update_device_missing_param():
-    result = await call_tool("update_device", {"device_id": 2})
-    assert "Error" in result[0].text
-
-
-# ── mark_as_unread ────────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_tool_mark_as_unread():
     import signal_mcp.store as _store_mod
@@ -1033,115 +583,6 @@ async def test_tool_get_avatar():
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_tool_send_message_request_response_accept():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("send_message_request_response", {"sender": "+1", "accept": True})
-    data = json.loads(result[0].text)
-    assert "accepted" in data["status"]
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_message_request_response_decline():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("send_message_request_response", {"sender": "+1", "accept": False})
-    data = json.loads(result[0].text)
-    assert "declined" in data["status"]
-
-
-# ── create_poll ───────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_create_poll():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 123})))
-    result = await call_tool("create_poll", {
-        "question": "Best day?", "options": ["Mon", "Fri"], "group_id": "grp==",
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "poll created"
-
-
-@pytest.mark.asyncio
-async def test_tool_create_poll_too_few_options():
-    result = await call_tool("create_poll", {
-        "question": "Q?", "options": ["Only one"], "group_id": "grp==",
-    })
-    assert "Error" in result[0].text
-
-
-@pytest.mark.asyncio
-async def test_tool_create_poll_missing_conversation():
-    result = await call_tool("create_poll", {"question": "Q?", "options": ["A", "B"]})
-    assert "Error" in result[0].text
-
-
-# ── vote_poll ─────────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_vote_poll():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("vote_poll", {
-        "target_author": "+1", "target_timestamp": 123,
-        "poll_id": 1, "votes": [0], "group_id": "grp==",
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "vote sent"
-
-
-# ── terminate_poll ────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_terminate_poll():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("terminate_poll", {
-        "target_author": "+1", "target_timestamp": 123,
-        "poll_id": 1, "group_id": "grp==",
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "poll terminated"
-
-
-# ── send_attachment multiple paths ───────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_attachment_paths_array(tmp_path):
-    f1 = tmp_path / "a.txt"
-    f2 = tmp_path / "b.txt"
-    f1.write_text("x")
-    f2.write_text("y")
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"timestamp": 1})))
-    result = await call_tool("send_attachment", {
-        "recipient": "+19999999999",
-        "paths": [str(f1), str(f2)],
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "sent"
-
-
-@pytest.mark.asyncio
-async def test_tool_send_attachment_no_path():
-    result = await call_tool("send_attachment", {"recipient": "+1"})
-    assert "Error" in result[0].text
-
-
-# ── sendReceipt fix ───────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_send_read_receipt_uses_sendReceipt():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("send_read_receipt", {"sender": "+19999999999", "timestamps": [100, 200]})
-    assert "sent" in result[0].text
-
-
-# ── get_sticker ───────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
 async def test_tool_get_sticker():
     respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"base64": "xyz"})))
     result = await call_tool("get_sticker", {"pack_id": "deadbeef", "sticker_id": 2})
@@ -1156,25 +597,6 @@ async def test_tool_get_sticker_missing_params():
 
 
 # ── upload_sticker_pack ───────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_upload_sticker_pack(tmp_path):
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text("{}")
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({"url": "https://signal.art/x"})))
-    result = await call_tool("upload_sticker_pack", {"path": str(manifest)})
-    data = json.loads(result[0].text)
-    assert "signal.art" in data["url"]
-
-
-@pytest.mark.asyncio
-async def test_tool_upload_sticker_pack_missing_path():
-    result = await call_tool("upload_sticker_pack", {})
-    assert "Error" in result[0].text
-
-
-# ── list_accounts ─────────────────────────────────────────────────────────────
 
 @respx.mock
 @pytest.mark.asyncio
@@ -1207,87 +629,6 @@ async def test_get_conversation_invalid_since_returns_error():
 
 
 # ── send_group_attachment missing path ───────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_send_group_attachment_missing_path_returns_error():
-    """send_group_attachment with no path/paths must return an error, not crash."""
-    result = await call_tool("send_group_attachment", {"group_id": "grp=="})
-    text = result[0].text
-    assert "error" in text.lower() or "path" in text.lower()
-
-
-# ── unpin_message / vote_poll / terminate_poll missing recipient+group ────────
-
-@pytest.mark.asyncio
-async def test_unpin_message_missing_target_returns_error():
-    """unpin_message with neither recipient nor group_id must return an error."""
-    result = await call_tool("unpin_message", {
-        "target_author": "+1", "target_timestamp": 123
-    })
-    text = result[0].text
-    assert "error" in text.lower() or "required" in text.lower()
-
-
-@pytest.mark.asyncio
-async def test_vote_poll_missing_target_returns_error():
-    """vote_poll with neither recipient nor group_id must return an error."""
-    result = await call_tool("vote_poll", {
-        "target_author": "+1", "target_timestamp": 123,
-        "poll_id": 1, "votes": [0]
-    })
-    text = result[0].text
-    assert "error" in text.lower() or "required" in text.lower()
-
-
-@pytest.mark.asyncio
-async def test_terminate_poll_missing_target_returns_error():
-    """terminate_poll with neither recipient nor group_id must return an error."""
-    # Include all _REQUIRED fields so the check reaches the recipient/group_id guard
-    result = await call_tool("terminate_poll", {
-        "target_author": "+1", "target_timestamp": 123, "poll_id": 1
-    })
-    text = result[0].text
-    assert "error" in text.lower() or "required" in text.lower()
-
-
-# ── update_account ────────────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_update_account():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("update_account", {"device_name": "My Mac"})
-    data = json.loads(result[0].text)
-    assert data["status"] == "account updated"
-
-
-# ── set_pin / remove_pin ──────────────────────────────────────────────────────
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_set_pin():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("set_pin", {"pin": "1234"})
-    data = json.loads(result[0].text)
-    assert data["status"] == "PIN set"
-
-
-@pytest.mark.asyncio
-async def test_tool_set_pin_missing():
-    result = await call_tool("set_pin", {})
-    assert "Error" in result[0].text
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_tool_remove_pin():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("remove_pin", {})
-    data = json.loads(result[0].text)
-    assert data["status"] == "PIN removed"
-
-
-# ── receive_messages falls back to store when service is running ──────────────
 
 @respx.mock
 @pytest.mark.asyncio
@@ -1410,58 +751,6 @@ async def test_prune_store_rejects_zero_days():
 
 # ── start/finish_change_number + submit_rate_limit_challenge ──────────────────
 
-@respx.mock
-@pytest.mark.asyncio
-async def test_start_change_number():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("start_change_number", {"number": "+12025551234"})
-    data = json.loads(result[0].text)
-    assert data["status"] == "verification code sent"
-    req_body = json.loads(respx.calls[-1].request.content)
-    assert req_body["method"] == "startChangeNumber"
-    assert req_body["params"]["number"] == "+12025551234"
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_start_change_number_voice():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    await call_tool("start_change_number", {"number": "+12025551234", "voice": True})
-    req_body = json.loads(respx.calls[-1].request.content)
-    assert req_body["params"]["voice"] is True
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_finish_change_number():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("finish_change_number", {
-        "number": "+12025551234", "verification_code": "123456"
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "number changed"
-    req_body = json.loads(respx.calls[-1].request.content)
-    assert req_body["method"] == "finishChangeNumber"
-    assert req_body["params"]["verificationCode"] == "123456"
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_submit_rate_limit_challenge():
-    respx.post(DAEMON_URL).mock(return_value=httpx.Response(200, json=rpc_ok({})))
-    result = await call_tool("submit_rate_limit_challenge", {
-        "challenge": "abc123", "captcha": "signalcaptcha://token"
-    })
-    data = json.loads(result[0].text)
-    assert data["status"] == "challenge submitted"
-    req_body = json.loads(respx.calls[-1].request.content)
-    assert req_body["method"] == "submitRateLimitChallenge"
-    assert req_body["params"]["challenge"] == "abc123"
-
-
-# ── Bug-fix regression tests ──────────────────────────────────────────────────
-
-# Bug 2: get_unread limit+1 probe — the extra message must not be silently consumed
 @pytest.mark.asyncio
 async def test_get_unread_has_more_does_not_consume_extra():
     """When exactly limit+1 unread messages exist, the (limit+1)th must remain unread."""

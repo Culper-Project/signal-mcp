@@ -56,12 +56,68 @@ def test_tools_is_non_empty_list_of_tool_instances():
         assert isinstance(t, Tool)
 
 
+# ── Culper read-only hardening guard ──────────────────────────────────────────
+# This fork must never register write/destructive/egress tools. If this test
+# fails, a write tool has crept back in (e.g. via an unaudited upstream merge).
+
+_FORBIDDEN_TOOLS = {
+    "send_message", "send_group_message", "send_note_to_self", "edit_message",
+    "send_attachment", "send_group_attachment", "react_to_message", "set_typing",
+    "send_sticker", "send_group_sticker",
+    "delete_message", "delete_group_message", "admin_delete_message",
+    "send_read_receipt", "send_message_request_response",
+    "block_contact", "unblock_contact", "remove_contact", "update_contact",
+    "update_profile", "send_contacts_sync",
+    "create_group", "join_group", "update_group", "leave_group",
+    "pin_message", "unpin_message",
+    "add_device", "remove_device", "update_device",
+    "create_poll", "vote_poll", "terminate_poll",
+    "set_expiration_timer", "trust_identity", "update_configuration",
+    "update_account", "set_pin", "remove_pin",
+    "start_change_number", "finish_change_number", "submit_rate_limit_challenge",
+    "add_sticker_pack", "upload_sticker_pack",
+    "set_webhook", "get_webhook",
+    "schedule_message", "list_scheduled_messages", "cancel_scheduled_message",
+    "run_scheduled_messages",
+}
+
+_ALLOWED_SEND_PREFIXED = {
+    "send_sync_request",       # pulls history from own primary device
+    "delete_local_messages",   # local signal-mcp store only — never touches Signal
+}
+
+
+def test_no_forbidden_tools_registered():
+    names = {t.name for t in TOOLS}
+    leaked = names & _FORBIDDEN_TOOLS
+    assert not leaked, f"Write/destructive tools registered in read-only fork: {sorted(leaked)}"
+
+
+def test_no_unexpected_send_tools():
+    names = {t.name for t in TOOLS}
+    sends = {n for n in names if n.startswith(("send_", "create_", "update_", "delete_", "remove_", "set_"))}
+    assert sends <= _ALLOWED_SEND_PREFIXED, f"Unexpected mutating-looking tools: {sorted(sends - _ALLOWED_SEND_PREFIXED)}"
+
+
+@pytest.mark.asyncio
+async def test_forbidden_tools_not_dispatchable():
+    """Even a hand-crafted call to a removed tool must hit 'Unknown tool'."""
+    for name in ("send_message", "delete_message", "update_account", "set_webhook"):
+        result = await call_tool(name, {"recipient": "+10000000000", "message": "x"})
+        assert "Unknown tool" in result[0].text
+
+
+def test_webhook_module_gone():
+    import importlib.util
+    assert importlib.util.find_spec("signal_mcp.webhook") is None
+
+
 @pytest.mark.asyncio
 async def test_list_tools_handler_returns_tools():
     """list_tools() registered handler returns the TOOLS list."""
     from signal_mcp.server import _list_tools as list_tools
     from mcp.types import RequestParams
-    result = await list_tools(RequestParams())
+    result = await list_tools(None, RequestParams())
     assert result.tools == TOOLS
     assert len(result.tools) > 0
 
