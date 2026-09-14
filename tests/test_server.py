@@ -454,7 +454,8 @@ async def test_tool_receive_messages_with_data():
     data = json.loads(result[0].text)
     assert len(data) == 1
     assert data[0]["body"] == "live message"
-    assert data[0]["sender"] == "+12223334444"
+    # aci uuid is preferred over E164 so live rows key like Desktop imports
+    assert data[0]["sender"] == "uuid-x"
 
 
 @pytest.mark.asyncio

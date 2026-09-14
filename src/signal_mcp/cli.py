@@ -527,6 +527,29 @@ def import_desktop():
         sys.exit(1)
 
 
+# ── backfill-desktop-recipients ────────────────────────────────────────────────
+
+@cli.command("backfill-desktop-recipients")
+def backfill_desktop_recipients_cmd():
+    """One-off: fill recipient on outgoing DMs imported before it was recorded."""
+    from .desktop import backfill_desktop_recipients, DesktopImportError
+
+    def progress(msg: str):
+        click.echo(msg, err=True)
+
+    try:
+        result = backfill_desktop_recipients(progress_cb=progress)
+    except DesktopImportError as e:
+        raise click.ClickException(str(e))
+    click.echo(
+        f"Backfill done: {result['recipients_filled']} recipients filled, "
+        f"{result['senders_rekeyed']} senders re-keyed; "
+        f"{result['unrecoverable']} outgoing DMs still without recipient "
+        f"(Desktop DB scanned: {result['desktop_outgoing_direct']} outgoing / "
+        f"{result['desktop_incoming_direct']} incoming direct)"
+    )
+
+
 # ── sync-desktop ───────────────────────────────────────────────────────────────
 
 @cli.command("sync-desktop")

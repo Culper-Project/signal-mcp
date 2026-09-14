@@ -2,6 +2,16 @@
 
 All notable changes to signal-mcp are documented here.
 
+## [1.34.0] - 2026-09-14
+
+### Fixed
+- **Outgoing direct messages now record their recipient.** Signal Desktop imports (`import-desktop` / `sync-desktop`) wrote every outgoing DM with `recipient = NULL`, so readers could not tell which 1:1 chat a sent message belonged to. The importer now stores the conversation's counterpart id — aci uuid preferred, E164 fallback — in `recipient`, and keys incoming DM senders by the same rule (aci first) so both halves of a chat share one id.
+- Live receive path: `syncMessage.sentMessage` prefers `destinationUuid`; incoming envelopes prefer `sourceUuid`, matching the Desktop importer.
+- Desktop conversation names are now also stored under the counterpart's aci uuid (real names only; the E164 row keeps its number fallback).
+
+### Added
+- `signal-mcp backfill-desktop-recipients`: one-off repair that re-reads Signal Desktop and fills `recipient` on already-imported outgoing DMs, re-keys E164-stored incoming senders to the aci, and reports how many outgoing DMs remain unrecoverable (no Desktop original). Bodies are never read; output is counts only.
+
 ## [1.8.0] — 2026-05-03
 
 ### UX

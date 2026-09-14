@@ -1710,3 +1710,53 @@ async def test_receive_sync_edit_message_updates_store(client):
     rows = _store_mod.search_messages("after edit")
     assert len(rows) == 1
     assert rows[0].body == "after edit"
+
+
+# ── counterpart ids: aci preferred over E164 ──────────────────────────────────
+
+def test_parse_envelope_sync_sent_dm_prefers_destination_uuid(client):
+    envelope = {
+        "envelope": {
+            "source": "+19999999999",
+            "timestamp": 1717200000000,
+            "syncMessage": {
+                "sentMessage": {
+                    "destination": "+15555555555",
+                    "destinationNumber": "+15555555555",
+                    "destinationUuid": "aci-dest",
+                    "timestamp": 1717200000000,
+                    "message": "sent from another device",
+                    "attachments": [],
+                }
+            },
+        }
+    }
+    msg = client._parse_envelope(envelope)
+    assert msg.recipient == "aci-dest"
+    assert msg.group_id is None
+
+
+def test_parse_envelope_incoming_sender_prefers_source_uuid(client):
+    envelope = {
+        "envelope": {
+            "source": "+13333333333",
+            "sourceNumber": "+13333333333",
+            "sourceUuid": "aci-src",
+            "timestamp": 1717200000000,
+            "dataMessage": {"timestamp": 1717200000000, "message": "hi", "attachments": []},
+        }
+    }
+    msg = client._parse_envelope(envelope)
+    assert msg.sender == "aci-src"
+    assert msg.recipient is None
+
+
+def test_parse_envelope_incoming_sender_falls_back_to_e164(client):
+    envelope = {
+        "envelope": {
+            "source": "+13333333333",
+            "timestamp": 1717200000000,
+            "dataMessage": {"timestamp": 1717200000000, "message": "hi", "attachments": []},
+        }
+    }
+    assert client._parse_envelope(envelope).sender == "+13333333333"

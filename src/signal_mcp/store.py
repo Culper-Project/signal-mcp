@@ -165,6 +165,61 @@ def save_message(msg: Message) -> bool:
     return True
 
 
+def fill_missing_recipients(pairs: list[tuple[str, str]]) -> int:
+    """Set recipient on direct messages that still lack one. pairs = (message_id, recipient).
+
+    Only rows with group_id IS NULL AND recipient IS NULL are touched. Returns rows updated.
+    """
+    if not pairs:
+        return 0
+    init_db()
+    updated = 0
+    with _db() as conn:
+        for chunk in _chunked(pairs, _SQLITE_MAX_VARS):
+            cur = conn.executemany(
+                "UPDATE messages SET recipient = ?"
+                " WHERE id = ? AND group_id IS NULL AND recipient IS NULL",
+                [(recipient, mid) for mid, recipient in chunk],
+            )
+            updated += cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+    return updated
+
+
+def rekey_senders(pairs: list[tuple[str, str]]) -> int:
+    """Replace sender on direct messages where it differs. pairs = (message_id, sender).
+
+    Used to move E164-keyed incoming rows onto the counterpart's aci uuid. The FTS
+    index mirrors sender, so it is rebuilt when anything changed. Returns rows updated.
+    """
+    if not pairs:
+        return 0
+    init_db()
+    updated = 0
+    with _db() as conn:
+        for chunk in _chunked(pairs, _SQLITE_MAX_VARS):
+            cur = conn.executemany(
+                "UPDATE messages SET sender = ?"
+                " WHERE id = ? AND group_id IS NULL AND sender != ?",
+                [(sender, mid, sender) for mid, sender in chunk],
+            )
+            updated += cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+        if updated:
+            conn.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
+    return updated
+
+
+def count_outgoing_direct_without_recipient(own_number: str) -> int:
+    """Outgoing direct messages whose counterpart is unknown (recipient NULL)."""
+    init_db()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM messages"
+            " WHERE sender = ? AND group_id IS NULL AND recipient IS NULL",
+            (own_number,),
+        ).fetchone()
+        return row[0] if row else 0
+
+
 def get_conversation(
     recipient: str, limit: int = 50, offset: int = 0, since: datetime | None = None
 ) -> list[Message]:

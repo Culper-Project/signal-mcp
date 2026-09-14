@@ -270,6 +270,8 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
         else:
             read_col = "NULL AS readStatus"
 
+        conv_service_col = _conversation_service_id_col(conn)
+
         rows = conn.execute(
             f"""SELECT
                 m.id,
@@ -283,6 +285,7 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
                 m.hasAttachments,
                 {read_col},
                 c.e164    AS conv_e164,
+                {conv_service_col},
                 c.groupId AS conv_group_id
             FROM messages m
             LEFT JOIN conversations c ON c.id = m.conversationId
@@ -298,11 +301,20 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
             if not ts_ms:
                 continue
 
+            group_id = _decode_group_id(row["conv_group_id"])
+            # The other party of a 1:1 conversation: aci uuid preferred, E164 fallback.
+            # Both halves of a direct chat must share this one id so readers can
+            # merge them (incoming rows carry it as sender, outgoing as recipient).
+            counterpart = _counterpart_id(row["conv_service_id"], row["conv_e164"])
+
             # Outgoing: source is NULL in Signal Desktop — use own account number
+            recipient = None
             if row["type"] == "outgoing":
                 sender = own_number or "me"
+                if group_id is None:
+                    recipient = counterpart
             else:
-                sender = row["source"] or row["sourceUuid"] or row["conv_e164"] or ""
+                sender = row["sourceUuid"] or row["source"] or counterpart or ""
 
             # Signal Desktop: readStatus=0 means read, 1=unread, NULL=unknown
             # Default unknown/old messages to read (safer than false unread counts)
@@ -314,13 +326,32 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
                 sender=sender,
                 body=row["body"] or "",
                 timestamp=datetime.fromtimestamp(ts_ms / 1000),
-                group_id=_decode_group_id(row["conv_group_id"]),
+                group_id=group_id,
+                recipient=recipient,
                 is_read=is_read,
             ))
     finally:
         conn.close()
 
     return messages
+
+
+def _conversation_service_id_col(conn: sqlite3.Connection) -> str:
+    """SELECT fragment for the conversation's service id, aliased to conv_service_id.
+
+    Signal Desktop renamed conversations.uuid → serviceId; older DBs have neither.
+    """
+    conv_cols = {r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
+    if "serviceId" in conv_cols:
+        return "c.serviceId AS conv_service_id"
+    if "uuid" in conv_cols:
+        return "c.uuid AS conv_service_id"
+    return "NULL AS conv_service_id"
+
+
+def _counterpart_id(service_id: str | None, e164: str | None) -> str | None:
+    """Stable id for the other party of a direct conversation: aci uuid, else E164."""
+    return service_id or e164 or None
 
 
 def _read_conversation_names(plain_db: Path) -> list[tuple[str, str, str]]:
@@ -343,13 +374,24 @@ def _read_conversation_names(plain_db: Path) -> list[tuple[str, str, str]]:
             return []
         name_expr = f"COALESCE({', '.join(f'NULLIF({p}, \"\")' for p in name_expr_parts)})"
 
+        # A real name (no E164 fallback) for the aci-keyed row, so a phone
+        # number never masquerades as a person's display name there.
+        real_parts = [p for p in name_expr_parts if p != "c.e164"]
+        real_expr = (
+            f"COALESCE({', '.join(f'NULLIF({p}, \"\")' for p in real_parts)})"
+            if real_parts else "NULL"
+        )
+        service_col = _conversation_service_id_col(conn)
+
         rows = conn.execute(
             f"""SELECT
                 c.id,
                 c.type,
                 c.groupId,
                 c.e164,
-                {name_expr} AS display_name
+                {service_col},
+                {name_expr} AS display_name,
+                {real_expr} AS real_name
             FROM conversations c
             WHERE display_name IS NOT NULL AND display_name != ''"""
         ).fetchall()
@@ -360,7 +402,10 @@ def _read_conversation_names(plain_db: Path) -> list[tuple[str, str, str]]:
             group_id = _decode_group_id(row["groupId"])
             if conv_type == "group" and group_id:
                 result.append((group_id, row["display_name"], "group"))
-            elif row["e164"]:
+                continue
+            if row["conv_service_id"] and row["real_name"]:
+                result.append((row["conv_service_id"], row["real_name"], "direct"))
+            if row["e164"]:
                 result.append((row["e164"], row["display_name"], "direct"))
         return result
     finally:
@@ -377,14 +422,8 @@ def _decode_group_id(raw: str | None) -> str | None:
     return raw
 
 
-def import_from_desktop(progress_cb=None, signal_dir: Path | None = None, since_ms: int = 0) -> dict:
-    """
-    Full import pipeline: decrypt DB → parse → store.
-    Returns {"imported": N, "skipped": N, "total": N, "platform": str, "source": str}.
-
-    signal_dir: override the auto-detected Signal Desktop directory.
-    since_ms: if > 0, only import messages newer than this epoch-millisecond timestamp.
-    """
+def _resolve_desktop_paths(signal_dir: Path | None) -> tuple[Path, Path]:
+    """Return (db_path, config_path), validating both exist."""
     if signal_dir is not None:
         # Explicit override — construct paths from it
         db_path = signal_dir / "sql" / "db.sqlite"
@@ -402,8 +441,11 @@ def import_from_desktop(progress_cb=None, signal_dir: Path | None = None, since_
         )
     if not config_path.exists():
         raise DesktopImportError(f"Signal Desktop config not found at {config_path}")
+    return db_path, config_path
 
-    # 1. Read encrypted key from config
+
+def _decrypt_desktop_db(db_path: Path, config_path: Path, progress_cb=None) -> Path:
+    """Unlock the keychain and export Signal Desktop's DB to a plain temp file."""
     config = json.loads(config_path.read_text())
     encrypted_key_hex = config.get("encryptedKey")
     if not encrypted_key_hex:
@@ -418,16 +460,27 @@ def import_from_desktop(progress_cb=None, signal_dir: Path | None = None, since_
         else:
             progress_cb("Decrypting Signal Desktop key…")
 
-    # 2. Derive the raw DB key (platform-specific)
     db_key_hex = _get_db_key_hex(encrypted_key_hex)
 
     if progress_cb:
         progress_cb("Decrypting Signal Desktop database…")
+    return _decrypt_db_to_temp(db_key_hex, db_path)
 
-    # 3. Export encrypted DB to plain SQLite temp file
+
+def import_from_desktop(progress_cb=None, signal_dir: Path | None = None, since_ms: int = 0) -> dict:
+    """
+    Full import pipeline: decrypt DB → parse → store.
+    Returns {"imported": N, "skipped": N, "total": N, "platform": str, "source": str}.
+
+    signal_dir: override the auto-detected Signal Desktop directory.
+    since_ms: if > 0, only import messages newer than this epoch-millisecond timestamp.
+    """
+    db_path, config_path = _resolve_desktop_paths(signal_dir)
+
+    # 1–3. Read encrypted key, derive the raw DB key, export to a plain temp file
     plain_db = None
     try:
-        plain_db = _decrypt_db_to_temp(db_key_hex, db_path)
+        plain_db = _decrypt_desktop_db(db_path, config_path, progress_cb)
 
         if progress_cb:
             progress_cb("Importing messages…")
@@ -508,3 +561,86 @@ def sync_from_desktop(progress_cb=None, signal_dir: Path | None = None) -> dict:
     result["since"] = datetime.fromtimestamp(since_ms / 1000).isoformat() if since_ms else None
     result["incremental"] = last_sync is not None
     return result
+
+
+def _read_direct_counterparts(plain_db: Path) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Read (store_message_id, counterpart_id) pairs for every direct message.
+
+    Returns (outgoing, incoming). counterpart_id is the aci uuid when Signal Desktop
+    knows it, else the E164 — the same rule _read_messages_from_plain_db applies.
+    """
+    conn = sqlite3.connect(str(plain_db))
+    conn.row_factory = sqlite3.Row
+    try:
+        service_col = _conversation_service_id_col(conn)
+        msg_cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "sourceServiceId" in msg_cols:
+            source_col = "m.sourceServiceId AS sourceUuid"
+        elif "sourceUuid" in msg_cols:
+            source_col = "m.sourceUuid AS sourceUuid"
+        else:
+            source_col = "NULL AS sourceUuid"
+        rows = conn.execute(
+            f"""SELECT m.id, m.type, m.source, {source_col}, c.e164 AS conv_e164, {service_col}
+                FROM messages m
+                JOIN conversations c ON c.id = m.conversationId
+                WHERE m.type IN ('incoming', 'outgoing')
+                  AND (c.groupId IS NULL OR c.groupId = '')"""
+        ).fetchall()
+        outgoing: list[tuple[str, str]] = []
+        incoming: list[tuple[str, str]] = []
+        for row in rows:
+            counterpart = _counterpart_id(row["conv_service_id"], row["conv_e164"])
+            store_id = f"desktop_{row['id']}"
+            if row["type"] == "outgoing":
+                if counterpart:
+                    outgoing.append((store_id, counterpart))
+            else:
+                sender = row["sourceUuid"] or row["source"] or counterpart
+                if sender:
+                    incoming.append((store_id, sender))
+        return outgoing, incoming
+    finally:
+        conn.close()
+
+
+def backfill_desktop_recipients(progress_cb=None, signal_dir: Path | None = None) -> dict:
+    """One-off repair for stores written before recipients were recorded.
+
+    Re-reads Signal Desktop's DB and, for every direct message already in the store:
+      * fills messages.recipient on outgoing rows (was NULL) with the counterpart id;
+      * re-keys incoming rows whose sender was stored as E164 to the counterpart's
+        aci uuid, so both halves of a 1:1 chat share one id.
+    Message bodies are never read or written. Returns counts only, plus
+    "unrecoverable": outgoing direct rows still lacking a recipient after the pass
+    (their Signal Desktop originals are gone — history cannot be recovered).
+    """
+    db_path, config_path = _resolve_desktop_paths(signal_dir)
+    plain_db = None
+    try:
+        plain_db = _decrypt_desktop_db(db_path, config_path, progress_cb)
+        if progress_cb:
+            progress_cb("Reading direct-message counterparts…")
+        outgoing, incoming = _read_direct_counterparts(plain_db)
+    finally:
+        if plain_db is not None:
+            plain_db.unlink(missing_ok=True)
+
+    if progress_cb:
+        progress_cb("Updating store…")
+    try:
+        own_number = detect_account()
+    except Exception:
+        own_number = ""
+    filled = _store.fill_missing_recipients(outgoing)
+    rekeyed = _store.rekey_senders(incoming)
+    remaining = _store.count_outgoing_direct_without_recipient(own_number) if own_number else None
+    return {
+        "desktop_outgoing_direct": len(outgoing),
+        "desktop_incoming_direct": len(incoming),
+        "recipients_filled": filled,
+        "senders_rekeyed": rekeyed,
+        "unrecoverable": remaining,
+        "platform": platform.system(),
+        "source": str(db_path.parent.parent),
+    }

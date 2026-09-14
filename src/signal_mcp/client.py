@@ -106,6 +106,18 @@ _daemon_last_ok_at: float = 0.0   # monotonic timestamp of last confirmed-alive 
 _DAEMON_OK_TTL: float = 5.0       # skip HTTP ping if daemon was healthy within this window
 
 
+def _envelope_sender(data: dict) -> str:
+    """Sender id of a signal-cli envelope: aci uuid preferred, E164 fallback.
+
+    Keeps live-received rows keyed the same way as Signal Desktop imports.
+    """
+    return (
+        data.get("sourceUuid", "")
+        or data.get("source", "")
+        or data.get("sourceNumber", "")
+    )
+
+
 class SignalClient:
     def __init__(self, account: str | None = None, daemon_url: str = DAEMON_URL):
         self._account = account
@@ -519,7 +531,7 @@ class SignalClient:
         for envelope in result if isinstance(result, list) else []:
             # Intercept incoming edits: update existing message body rather than saving a new ghost
             data = envelope.get("envelope", envelope)
-            edit_sender = data.get("source", "") or data.get("sourceNumber", "")
+            edit_sender = _envelope_sender(data)
             dm = data.get("dataMessage") or {}
             edit = dm.get("editMessage")
             if not edit:
@@ -585,7 +597,7 @@ class SignalClient:
 
     def _parse_envelope(self, envelope: dict) -> Message | None:
         data = envelope.get("envelope", envelope)
-        sender = data.get("source", "") or data.get("sourceNumber", "")
+        sender = _envelope_sender(data)
         ts_ms = data.get("timestamp", 0)
 
         # Delivery/read receipts
@@ -613,7 +625,13 @@ class SignalClient:
             data_message = sent
             sender = self.account  # it was sent by us
             ts_ms = sent.get("timestamp", ts_ms)
-            recipient = sent.get("destination") or sent.get("destinationNumber")
+            # Counterpart id for a DM: aci uuid preferred, E164 fallback — the same
+            # key the Desktop importer uses, so both halves of a 1:1 chat merge.
+            recipient = (
+                sent.get("destinationUuid")
+                or sent.get("destination")
+                or sent.get("destinationNumber")
+            )
             attachments = self._parse_attachments(data_message)
             quote = data_message.get("quote") or {}
             return Message(

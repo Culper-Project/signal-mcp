@@ -45,6 +45,7 @@ The CLI and MCP server share the same store and daemon. You don't have to choose
 | Quick send from terminal or a cron job | `signal-mcp send +49... "done"` |
 | Set up background message capture (once) | `signal-mcp install-service` |
 | Import full history from Signal Desktop (once) | `signal-mcp import-desktop` |
+| Repair recipients on DMs imported before v1.34 (once) | `signal-mcp backfill-desktop-recipients` |
 | Export a conversation to CSV | `signal-mcp export --recipient +49... --format csv` |
 | Check unread messages and conversations | `signal-mcp conversations` |
 | "What did I miss while I was offline?" | Claude via MCP |

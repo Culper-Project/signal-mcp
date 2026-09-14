@@ -840,3 +840,38 @@ def test_get_stats_single_query_result():
     assert stats["unread_messages"] == 2  # s3 is outgoing (sender == own_number), not counted
     assert stats["oldest"] is not None
     assert stats["newest"] is not None
+
+
+# ── recipient backfill helpers ────────────────────────────────────────────────
+
+def test_fill_missing_recipients_only_touches_null_direct_rows():
+    store.save_message(make_msg(id="a"))
+    store.save_message(make_msg(id="b", recipient="keep"))
+    store.save_message(make_msg(id="g", group_id="grp"))
+    n = store.fill_missing_recipients([("a", "aci-1"), ("b", "aci-2"), ("g", "aci-3"), ("missing", "aci-4")])
+    assert n == 1
+    conv = {m.id: m for m in store.get_messages_for_export()}
+    assert conv["a"].recipient == "aci-1"
+    assert conv["b"].recipient == "keep"
+    assert conv["g"].recipient is None
+    assert store.fill_missing_recipients([]) == 0
+
+
+def test_rekey_senders_updates_sender_and_fts():
+    store.save_message(make_msg(id="a", sender="+49222", body="hello there"))
+    store.save_message(make_msg(id="b", sender="aci-b", body="already keyed"))
+    n = store.rekey_senders([("a", "aci-a"), ("b", "aci-b")])
+    assert n == 1
+    conv = {m.id: m for m in store.get_messages_for_export()}
+    assert conv["a"].sender == "aci-a"
+    # FTS still finds the message and reflects the new sender
+    assert [m.id for m in store.search_messages("hello", sender="aci-a")] == ["a"]
+    assert store.search_messages("hello", sender="+49222") == []
+
+
+def test_count_outgoing_direct_without_recipient():
+    store.save_message(make_msg(id="a", sender="+me"))
+    store.save_message(make_msg(id="b", sender="+me", recipient="aci"))
+    store.save_message(make_msg(id="c", sender="+me", group_id="g"))
+    store.save_message(make_msg(id="d", sender="+other"))
+    assert store.count_outgoing_direct_without_recipient("+me") == 1

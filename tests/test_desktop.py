@@ -1103,3 +1103,121 @@ def test_read_messages_zero_timestamp_after_since_filter(tmp_path):
     msgs = _read_messages_from_plain_db(db_path, since_ms=-1)
     # The Python guard `if not ts_ms: continue` kicks in and skips the row
     assert msgs == []
+
+
+# ── Direct-message counterpart ids (recipient on outgoing, aci-keyed sender) ───
+
+def _make_plain_db_with_service_ids(tmp_path: Path) -> Path:
+    """Signal-like DB with the modern serviceId / sourceServiceId columns."""
+    db_path = tmp_path / "plain_sid.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE conversations (
+            id TEXT PRIMARY KEY, type TEXT, e164 TEXT, serviceId TEXT, groupId TEXT,
+            name TEXT, profileName TEXT, profileFullName TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE messages (
+            id TEXT PRIMARY KEY, conversationId TEXT, type TEXT, body TEXT,
+            sent_at INTEGER, received_at INTEGER, source TEXT, sourceServiceId TEXT,
+            hasAttachments INTEGER, readStatus INTEGER
+        )
+    """)
+    # Alice: aci known and E164 known → aci wins
+    conn.execute("INSERT INTO conversations VALUES ('ca', 'private', '+49111', 'aci-alice', NULL, NULL, 'Alice', 'Alice A')")
+    # Bob: E164 only (older contact) → E164 is the key
+    conn.execute("INSERT INTO conversations VALUES ('cb', 'private', '+49222', NULL, NULL, NULL, NULL, NULL)")
+    conn.execute("INSERT INTO conversations VALUES ('cg', 'group', NULL, NULL, 'group-xyz', 'Team', NULL, NULL)")
+    rows = [
+        ("o1", "ca", "outgoing", "x", 1000, 1000, None, None, 0, 0),
+        ("i1", "ca", "incoming", "y", 2000, 2000, "+49111", "aci-alice", 0, 1),
+        ("o2", "cb", "outgoing", "z", 3000, 3000, None, None, 0, 0),
+        ("i2", "cb", "incoming", "w", 4000, 4000, "+49222", None, 0, 1),
+        ("og", "cg", "outgoing", "g", 5000, 5000, None, None, 0, 0),
+        ("ig", "cg", "incoming", "h", 6000, 6000, None, "aci-alice", 0, 1),
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+def test_outgoing_dm_records_counterpart_as_recipient(tmp_path):
+    db = _make_plain_db_with_service_ids(tmp_path)
+    by_id = {m.id: m for m in _read_messages_from_plain_db(db, own_number="+10000")}
+    assert by_id["desktop_o1"].sender == "+10000"
+    assert by_id["desktop_o1"].recipient == "aci-alice"      # aci preferred
+    assert by_id["desktop_o2"].recipient == "+49222"          # E164 fallback
+    assert by_id["desktop_o1"].group_id is None
+
+
+def test_outgoing_group_message_has_no_recipient(tmp_path):
+    db = _make_plain_db_with_service_ids(tmp_path)
+    by_id = {m.id: m for m in _read_messages_from_plain_db(db, own_number="+10000")}
+    assert by_id["desktop_og"].group_id == "group-xyz"
+    assert by_id["desktop_og"].recipient is None
+
+
+def test_incoming_dm_sender_prefers_aci(tmp_path):
+    """Both halves of a 1:1 chat must share one id: incoming sender == outgoing recipient."""
+    db = _make_plain_db_with_service_ids(tmp_path)
+    by_id = {m.id: m for m in _read_messages_from_plain_db(db, own_number="+10000")}
+    assert by_id["desktop_i1"].sender == by_id["desktop_o1"].recipient == "aci-alice"
+    assert by_id["desktop_i2"].sender == by_id["desktop_o2"].recipient == "+49222"
+    assert by_id["desktop_i1"].recipient is None
+
+
+def test_legacy_db_without_service_id_column_still_imports(tmp_path):
+    """Old schema (no serviceId, no sourceServiceId): E164 keys, no recipient on group rows."""
+    db = _make_plain_db(tmp_path)
+    by_id = {m.id: m for m in _read_messages_from_plain_db(db, own_number="+49111")}
+    assert by_id["desktop_m1"].sender == "+49222"
+    assert by_id["desktop_m2"].recipient is None  # group message
+
+
+def test_read_conversation_names_keys_by_aci_and_e164(tmp_path):
+    from signal_mcp.desktop import _read_conversation_names
+    db = _make_plain_db_with_service_ids(tmp_path)
+    names = {(cid, t): n for cid, n, t in _read_conversation_names(db)}
+    assert names[("aci-alice", "direct")] == "Alice A"
+    assert names[("+49111", "direct")] == "Alice A"
+    # Bob has no real name: E164 row falls back to the number, no aci row exists
+    assert names[("+49222", "direct")] == "+49222"
+    assert not any(cid is None for cid, _ in names)
+    assert names[("group-xyz", "group")] == "Team"
+
+
+def test_read_direct_counterparts(tmp_path):
+    from signal_mcp.desktop import _read_direct_counterparts
+    db = _make_plain_db_with_service_ids(tmp_path)
+    outgoing, incoming = _read_direct_counterparts(db)
+    assert dict(outgoing) == {"desktop_o1": "aci-alice", "desktop_o2": "+49222"}
+    assert dict(incoming) == {"desktop_i1": "aci-alice", "desktop_i2": "+49222"}
+
+
+@patch("signal_mcp.desktop.detect_account", return_value="+10000")
+@patch("signal_mcp.desktop._decrypt_desktop_db")
+@patch("signal_mcp.desktop._store")
+def test_backfill_desktop_recipients(mock_store, mock_decrypt, mock_detect, tmp_path):
+    from signal_mcp.desktop import backfill_desktop_recipients
+    signal_dir = tmp_path / "Signal"
+    (signal_dir / "sql").mkdir(parents=True)
+    (signal_dir / "sql" / "db.sqlite").write_bytes(b"fake")
+    (signal_dir / "config.json").write_text(json.dumps({"encryptedKey": "76313000"}))
+    plain = _make_plain_db_with_service_ids(tmp_path)
+    mock_decrypt.return_value = plain
+    mock_store.fill_missing_recipients.return_value = 2
+    mock_store.rekey_senders.return_value = 1
+    mock_store.count_outgoing_direct_without_recipient.return_value = 0
+
+    result = backfill_desktop_recipients(signal_dir=signal_dir)
+
+    assert result["desktop_outgoing_direct"] == 2
+    assert result["desktop_incoming_direct"] == 2
+    assert result["recipients_filled"] == 2
+    assert result["senders_rekeyed"] == 1
+    assert result["unrecoverable"] == 0
+    mock_store.fill_missing_recipients.assert_called_once()
+    mock_store.count_outgoing_direct_without_recipient.assert_called_once_with("+10000")
+    assert not plain.exists()  # temp file cleaned up
