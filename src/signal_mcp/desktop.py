@@ -272,6 +272,9 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
 
         conv_service_col = _conversation_service_id_col(conn)
 
+        # The json blob carries a reply's quote. Older or synthetic databases may lack it.
+        json_col = "m.json AS msg_json" if "json" in msg_cols else "NULL AS msg_json"
+
         rows = conn.execute(
             f"""SELECT
                 m.id,
@@ -283,6 +286,7 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
                 m.source,
                 {source_col},
                 m.hasAttachments,
+                {json_col},
                 {read_col},
                 c.e164    AS conv_e164,
                 {conv_service_col},
@@ -329,11 +333,36 @@ def _read_messages_from_plain_db(plain_db: Path, own_number: str = "", since_ms:
                 group_id=group_id,
                 recipient=recipient,
                 is_read=is_read,
+                quote_id=_quote_id(row["msg_json"]),
             ))
     finally:
         conn.close()
 
     return messages
+
+
+def _quote_id(msg_json: str | None) -> str | None:
+    """The sent_at of the message this one replies to, as a string, or None.
+
+    Signal Desktop keeps a reply's quote inside the message's json blob as
+    ``{"quote": {"id": <sent_at of the quoted message>, "authorAci": ..., "text": ...}}``.
+    ``id`` is the quoted message's own sent_at, so a reader can join it back to
+    ``messages.timestamp`` in our store. Only the id is kept: the quoted text is
+    already stored on the original message.
+    """
+    if not msg_json:
+        return None
+    try:
+        quote = json.loads(msg_json).get("quote")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(quote, dict):
+        return None
+    qid = quote.get("id")
+    if isinstance(qid, bool) or not isinstance(qid, (int, str)):
+        return None
+    qid = str(qid).strip()
+    return qid if qid.isdigit() else None
 
 
 def _conversation_service_id_col(conn: sqlite3.Connection) -> str:

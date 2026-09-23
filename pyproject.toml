@@ -1,6 +1,6 @@
 [project]
 name = "signal-mcp"
-version = "1.34.0"
+version = "1.35.0"
 description = "Culper read-only fork: Signal MCP server via signal-cli — write/destructive tools and webhook egress removed"
 readme = "README.md"
 requires-python = ">=3.12"

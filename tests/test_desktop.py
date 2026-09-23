@@ -13,6 +13,7 @@ from signal_mcp.desktop import (
     DesktopImportError,
     _decode_group_id,
     _decrypt_key,
+    _quote_id,
     _read_messages_from_plain_db,
     import_from_desktop,
 )
@@ -1221,3 +1222,20 @@ def test_backfill_desktop_recipients(mock_store, mock_decrypt, mock_detect, tmp_
     mock_store.fill_missing_recipients.assert_called_once()
     mock_store.count_outgoing_direct_without_recipient.assert_called_once_with("+10000")
     assert not plain.exists()  # temp file cleaned up
+
+
+# ── quote_id from the json blob ────────────────────────────────────────────────
+
+def test_quote_id_reads_the_quoted_sent_at():
+    blob = json.dumps({"body": "ok", "quote": {"id": 1790185594462, "authorAci": "abc", "text": "Culper q"}})
+    assert _quote_id(blob) == "1790185594462"
+
+
+def test_quote_id_none_without_a_quote():
+    assert _quote_id(None) is None
+    assert _quote_id("") is None
+    assert _quote_id(json.dumps({"body": "plain"})) is None
+    assert _quote_id("not json") is None
+    assert _quote_id(json.dumps({"quote": "weird"})) is None
+    assert _quote_id(json.dumps({"quote": {"id": True}})) is None
+    assert _quote_id(json.dumps({"quote": {"id": "abc"}})) is None
