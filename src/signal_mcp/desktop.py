@@ -18,6 +18,8 @@ The encryptedKey is AES-128-CBC encrypted with a password from the OS keychain:
 """
 
 import json
+import signal
+import time
 import os
 import platform
 import subprocess
@@ -199,13 +201,59 @@ def _decrypt_key(encrypted_hex: str, password: bytes) -> str:
     return db_key_bytes.hex()
 
 
+# Plaintext exports live in a private directory, never the shared temp dir. A killed sync used to
+# leave a full plaintext copy of Signal Desktop's database in $TMPDIR (found 23 Sep 2026: one
+# 6.9 MB export from three days earlier and six empty ones). Every sync sweeps this directory
+# first, so nothing survives longer than one run even if a process dies without cleanup.
+PLAIN_DIR = Path(os.environ.get("SIGNAL_MCP_PLAIN_DIR", str(Path.home() / ".local/share/signal-mcp/tmp")))
+PLAIN_MAX_AGE_S = 600
+
+
+def _sweep_plain_dir() -> int:
+    """Remove stale plaintext exports. Returns how many were removed."""
+    removed = 0
+    try:
+        PLAIN_DIR.mkdir(parents=True, exist_ok=True)
+        os.chmod(PLAIN_DIR, 0o700)
+        now = time.time()
+        for f in PLAIN_DIR.iterdir():
+            try:
+                if f.is_file() and now - f.stat().st_mtime > PLAIN_MAX_AGE_S:
+                    f.unlink()
+                    removed += 1
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return removed
+
+
+def _install_cleanup_on_signal(paths: list[Path]) -> None:
+    """A SIGTERM from a parent's timeout must not leave the export behind."""
+    def _handler(signum, frame):  # noqa: ARG001
+        for p in paths:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise SystemExit(128 + signum)
+    try:
+        signal.signal(signal.SIGTERM, _handler)
+        signal.signal(signal.SIGINT, _handler)
+    except (ValueError, OSError):
+        pass  # not the main thread, or unsupported
+
+
 def _decrypt_db_to_temp(db_key_hex: str, db_path: Path | None = None) -> Path:
-    """Use sqlcipher CLI to export the encrypted DB to a plain SQLite file."""
+    """Use sqlcipher CLI to export the encrypted DB to a plain SQLite file in PLAIN_DIR."""
     sqlcipher = _find_sqlcipher()
     source = db_path or SIGNAL_DB
-    fd, tmp_str = tempfile.mkstemp(suffix=".db")
+    _sweep_plain_dir()
+    fd, tmp_str = tempfile.mkstemp(suffix=".db", dir=str(PLAIN_DIR))
     os.close(fd)
     tmp = Path(tmp_str)
+    os.chmod(tmp, 0o600)
+    _install_cleanup_on_signal([tmp])
 
     script = (
         f"PRAGMA key = \"x'{db_key_hex}'\";\n"
@@ -219,14 +267,18 @@ def _decrypt_db_to_temp(db_key_hex: str, db_path: Path | None = None) -> Path:
         f".quit\n"
     )
 
-    result = subprocess.run(
-        [sqlcipher, str(source)],
-        input=script, capture_output=True, text=True, timeout=60,
-    )
-    if result.returncode != 0:
-        raise DesktopImportError(f"sqlcipher failed: {result.stderr.strip()}")
-    if not tmp.exists() or tmp.stat().st_size == 0:
-        raise DesktopImportError("sqlcipher produced empty output — wrong key?")
+    try:
+        result = subprocess.run(
+            [sqlcipher, str(source)],
+            input=script, capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            raise DesktopImportError(f"sqlcipher failed: {result.stderr.strip()}")
+        if not tmp.exists() or tmp.stat().st_size == 0:
+            raise DesktopImportError("sqlcipher produced empty output — wrong key?")
+    except BaseException:
+        tmp.unlink(missing_ok=True)   # a failed or interrupted export never stays on disk
+        raise
 
     return tmp
 

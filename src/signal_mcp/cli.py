@@ -555,6 +555,19 @@ def backfill_desktop_recipients_cmd():
 @cli.command("sync-desktop")
 def sync_desktop():
     """Incremental sync from Signal Desktop (only new messages since last sync)."""
+    # One sync at a time. The approvals tick, the digest and an interactive session all call
+    # this; two exports of the same database at once double the cost and the chances of a
+    # leftover plaintext file. The second caller exits 0 and reads what the first one wrote.
+    import fcntl
+    from pathlib import Path as _P
+    _lock_dir = _P.home() / ".local/share/signal-mcp"
+    _lock_dir.mkdir(parents=True, exist_ok=True)
+    _lock_f = open(_lock_dir / "sync.lock", "w")
+    try:
+        fcntl.flock(_lock_f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        click.echo("another sync is running, skipped")
+        return
     from .desktop import sync_from_desktop, DesktopImportError
 
     def progress(msg):
